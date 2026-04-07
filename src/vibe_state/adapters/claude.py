@@ -20,24 +20,25 @@ class ClaudeAdapter(AdapterBase):
     def emit(self, ctx: AdapterContext) -> list[Path]:
         files: list[Path] = []
 
-        # CLAUDE.md
-        lines = [f"# CLAUDE.md — {ctx.project_name}", ""]
-        if "agents_md" in ctx.enabled_adapters:
-            lines += ["@AGENTS.md", "", "## Claude-Specific", ""]
-        else:
-            lines += ["## Project", ""]
-            lines += self._build_common_body(ctx)
+        # CLAUDE.md — skip if user already has one (migration preserves theirs)
+        if "CLAUDE.md" not in ctx.user_owned_files:
+            lines = [f"# CLAUDE.md — {ctx.project_name}", ""]
+            if "agents_md" in ctx.enabled_adapters:
+                lines += ["@AGENTS.md", "", "## Claude-Specific", ""]
+            else:
+                lines += ["## Project", ""]
+                lines += self._build_common_body(ctx)
 
-        lines += [
-            "## Vibe Workflow",
-            "",
-            "Read `.vibe/VIBE.md` for the full protocol.",
-            "**Checkpoint**: After each task, mark `[x]` in `state/tasks.md`"
-            " and append to `state/current.md`.",
-            "**Reality-First**: When memory conflicts with git, trust git.",
-            "",
-        ]
-        files.append(self._write_file(ctx.project_root / "CLAUDE.md", "\n".join(lines)))
+            lines += [
+                "## Vibe Workflow",
+                "",
+                "Read `.vibe/VIBE.md` for the full protocol.",
+                "**Checkpoint**: After each task, mark `[x]` in `state/tasks.md`"
+                " and append to `state/current.md`.",
+                "**Reality-First**: When memory conflicts with git, trust git.",
+                "",
+            ]
+            files.append(self._write_file(ctx.project_root / "CLAUDE.md", "\n".join(lines)))
 
         # .claude/rules/vibe-standards.md (slim when AGENTS.md also enabled)
         slim = "agents_md" in ctx.enabled_adapters

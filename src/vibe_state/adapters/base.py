@@ -20,6 +20,7 @@ class AdapterContext:
     frameworks: list[str] = field(default_factory=list)
     project_name: str = ""
     enabled_adapters: list[str] = field(default_factory=list)
+    user_owned_files: list[str] = field(default_factory=list)  # Files not to overwrite
 
 
 def _sanitize(value: str) -> str:

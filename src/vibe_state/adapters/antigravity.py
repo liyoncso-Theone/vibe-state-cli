@@ -17,6 +17,9 @@ class AntigravityAdapter(AdapterBase):
         return (project_root / "GEMINI.md").exists()
 
     def emit(self, ctx: AdapterContext) -> list[Path]:
+        if "GEMINI.md" in ctx.user_owned_files:
+            return []
+
         lines = [f"# GEMINI.md — {ctx.project_name}", ""]
 
         if "agents_md" in ctx.enabled_adapters:

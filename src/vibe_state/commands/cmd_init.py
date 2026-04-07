@@ -70,6 +70,27 @@ def init(
     if "agents_md" not in selected_adapters:
         selected_adapters.append("agents_md")
 
+    # Phase 2.5: Migrate existing AI config files
+    from vibe_state.core.migrator import build_imported_standards, scan_legacy_files
+
+    migration = scan_legacy_files(Path.cwd())
+    legacy_cleanup: list[Path] = []
+
+    if migration.found_files:
+        console.print(
+            f"\n[cyan]Found {len(migration.found_files)} existing config file(s):[/]"
+        )
+        for f in migration.found_files:
+            console.print(f"  - {f.relative_to(Path.cwd())}")
+
+        if migration.extracted_rules:
+            console.print(
+                f"[cyan]Imported {migration.total_lines_imported} rules"
+                f" into .vibe/state/standards.md[/]"
+            )
+
+        legacy_cleanup = migration.found_files.copy()
+
     # Phase 3: Render templates
     from vibe_state.config import VibeConfig, save_config
     from vibe_state.core.lifecycle import LifecycleState, write_state
@@ -87,6 +108,13 @@ def init(
         stale_task_days=config.state.stale_task_days,
         lang=lang,
     )
+
+    # Append imported rules to standards.md template
+    if migration.extracted_rules:
+        imported_section = build_imported_standards(migration.extracted_rules)
+        standards_key = "state/standards.md"
+        if standards_key in files:
+            files[standards_key] = files[standards_key].rstrip() + "\n" + imported_section
 
     # Phase 4: Write files
     for rel_path, content in files.items():
@@ -115,6 +143,11 @@ def init(
     from vibe_state.safety import save_snapshot
 
     ctx = build_adapter_context(Path.cwd())
+    # Tell adapters which root-level files belong to the user (don't overwrite)
+    ctx.user_owned_files = [
+        f.name for f in migration.found_files
+        if f.parent == Path.cwd()  # Only root-level files (not subdirectory rules)
+    ]
     adapter_files: list[str] = []
     for adapter_name in selected_adapters:
         adapter = get_adapter(adapter_name)
@@ -139,3 +172,19 @@ def init(
         f"[dim]Next: run [bold]vibe start[/bold] to begin your session.[/dim]",
         title="vibe init",
     ))
+
+    # Offer to clean up legacy files (now that everything is in .vibe/)
+    if legacy_cleanup:
+        console.print()
+        console.print(
+            "[yellow]The following legacy config files have been imported"
+            " into .vibe/ and are no longer needed:[/]"
+        )
+        for f in legacy_cleanup:
+            console.print(f"  - {f.relative_to(Path.cwd())}")
+        console.print(
+            "\n[dim]You can safely delete them. Their rules now live in"
+            " .vibe/state/standards.md.[/dim]"
+            "\n[dim]Run: [bold]vibe adapt --sync[/bold] to regenerate"
+            " adapter files from .vibe/ source.[/dim]"
+        )

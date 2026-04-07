@@ -19,6 +19,9 @@ class AgentsMdAdapter(AdapterBase):
         return (project_root / "AGENTS.md").exists()
 
     def emit(self, ctx: AdapterContext) -> list[Path]:
+        if "AGENTS.md" in ctx.user_owned_files:
+            return []  # User has their own, don't overwrite
+
         lines = [
             f"# AGENTS.md — {ctx.project_name}",
             "",
