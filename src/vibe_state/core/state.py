@@ -74,6 +74,7 @@ def _file_lock(lock_path: Path, retries: int = 3, wait: float = 0.2) -> Iterator
     try:
         yield
     finally:
+        assert fd is not None  # guaranteed by `acquired` check above
         os.close(fd)
         with contextlib.suppress(OSError):
             lock_file.unlink(missing_ok=True)
