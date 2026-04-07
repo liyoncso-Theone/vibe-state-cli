@@ -48,17 +48,15 @@ vibe sync                # 收工（把今天的 git 變更存進去，列出審
 | `vibe status` | 想看就看 | 秀出專案目前的狀態：進度、任務數、檔案大小 |
 | `vibe adapt` | 需要時 | 管理 AI 工具的設定檔：新增、移除、同步、預覽 |
 
-### 常用參數
+### 其他常用的
 
 ```bash
-vibe init --lang zh-TW       # 用繁體中文模板
-vibe init --force             # 重新初始化（也可以拿來重開已結案的專案）
-vibe sync --compact           # 收工時順便壓縮舊資料
-vibe sync --close             # 專案做完了，產出回顧報告並結案
-vibe adapt --add cursor       # 加入 Cursor 的設定檔
-vibe adapt --remove cursor    # 預覽會刪什麼（預設不會真的刪）
-vibe adapt --list             # 看哪些工具已啟用
+vibe init --lang zh-TW       # 想要繁體中文模板
+vibe sync --compact           # 收工順便清理舊資料
+vibe sync --close             # 專案做完了，結案
 ```
+
+其餘參數請用 `vibe --help` 或 `vibe sync --help` 查看。
 
 ## 支援哪些 AI 工具？
 
