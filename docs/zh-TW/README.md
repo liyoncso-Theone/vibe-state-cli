@@ -2,87 +2,90 @@
 
 [English](../../README.md) | [繁體中文](README.md)
 
-**廠商中立的 AI-人類協作狀態管理 CLI 工具。**
+**讓你的 AI 助手不再失憶。**
 
-讓任何 AI 模型 — Claude、GPT、Gemini 或本地模型 — 透過讀取一個 `.vibe/` 目錄，瞬間與你的專案上下文同步。
+不管你用的是 Claude、Cursor、Copilot 還是其他工具，每次關掉對話，AI 就什麼都忘了。`vibe-state-cli` 幫你在專案裡建一個 `.vibe/` 資料夾當作共享大腦 — 任何 AI 工具打開就能接上之前的進度。
 
-## 為什麼用 vibe？
+## 為什麼需要 vibe-state-cli？
 
-| 痛點 | vibe 怎麼解 |
-|------|-----------|
-| AI 每次 session 結束就失憶 | `.vibe/state/` 跨 session 和工具持久化 |
-| 切換 AI 工具等於從頭開始 | 8 個 adapter 從同一個來源生成各工具原生設定 |
-| CLAUDE.md 越來越長浪費 token | `vibe sync --compact` 自動歸檔，維持精簡（~684 tokens） |
-| 手動複製貼上上下文 prompt | `vibe init` 掃描專案自動生成一切 |
-| 沒有結構化的 session 交接 | `vibe sync` 附加 git 狀態 + C.L.E.A.R. 審查 |
+| 你一定遇過這些問題 | vibe-state-cli 怎麼幫你 |
+|---|---|
+| 跟 AI 討論了兩小時的架構，關掉終端就全忘了 | `.vibe/state/` 把進度存在專案裡，換 session 也不會斷 |
+| 早上用 Claude Code，下午切 Cursor，兩邊互不認識 | 8 種工具的設定檔自動生成，共用同一份狀態 |
+| CLAUDE.md 越寫越肥，AI 開始胡說八道 | `vibe sync --compact` 自動歸檔舊任務，Token 控制在安全水位 |
+| 每次開新對話都要手動貼一大堆背景資料 | `vibe init` 一鍵掃描你的專案，全部幫你生好 |
+| 昨天做到哪了？AI 不記得，你也忘了 | `vibe sync` 自動把 git 紀錄寫進狀態檔，明天一開就能接著做 |
 
-**100% 離線運作**。無 API key、無遙測、無網路連線。
+完全離線，不需要 API key，不傳任何資料出去。
 
 ## 安裝
 
 ```bash
-pipx install vibe-state-cli
+pip install vibe-state-cli
 ```
 
-## 快速開始
+## 三分鐘上手
 
 ```bash
 cd my-project
 
-vibe init                # 初始化 .vibe/（自動偵測語言、框架、AI 工具）
-vibe start               # 每日開工 — 載入狀態、git 校驗、自動壓縮
-vibe sync                # 每日收工 — 附加 git 狀態、C.L.E.A.R. 審查
-vibe sync --compact      # 歸檔已完成任務、壓縮狀態檔
-vibe sync --close        # 專案結案 — 最終同步 + 回顧報告
-vibe status              # 查看專案狀態（隨時可用）
-vibe adapt --list        # 查看已啟用的 AI 工具 adapter
+vibe init                # 初始化（自動偵測你的語言、框架、用哪些 AI 工具）
+vibe start               # 開工（載入昨天的進度，順便幫你整理過長的檔案）
+vibe sync                # 收工（把今天的 git 變更存進去，列出審查清單）
 ```
 
-## 五個指令
+就這樣。日常只需要這三個指令。
 
-| 指令 | 時機 | 功能 |
-|------|------|------|
-| `vibe init` | 一次 | 掃描專案、生成 `.vibe/`、偵測 AI 工具、產出 adapter 檔案 |
-| `vibe start` | 每天 | 載入狀態、git 校驗、需要時自動壓縮、Rich 摘要 |
-| `vibe sync` | 每天 | 附加 git 狀態、C.L.E.A.R. 審查 |
-| `vibe status` | 隨時 | 顯示 lifecycle、任務數、檔案大小 |
-| `vibe adapt` | 按需 | `--add`/`--remove`/`--list`/`--sync` adapter 檔案 |
+## 全部指令一覽
 
-### 旗標
+| 指令 | 什麼時候用 | 做什麼 |
+|------|-----------|--------|
+| `vibe init` | 專案開始時跑一次 | 掃描專案，建立 `.vibe/`，偵測你在用哪些 AI 工具並生成對應設定 |
+| `vibe start` | 每天開工 | 讀取狀態、比對 git、太長的自動壓縮，最後秀出今天的待辦摘要 |
+| `vibe sync` | 每天收工 | 把 git commit 紀錄附加到狀態檔，跑 C.L.E.A.R. 自我審查 |
+| `vibe status` | 想看就看 | 秀出專案目前的狀態：進度、任務數、檔案大小 |
+| `vibe adapt` | 需要時 | 管理 AI 工具的設定檔：新增、移除、同步、預覽 |
 
-- `vibe init --lang zh-TW` — 繁體中文模板
-- `vibe init --force` — 重新初始化或重開已結案專案
-- `vibe sync --compact` — 同步後壓縮記憶
-- `vibe sync --close` — 專案結案
-- `vibe adapt --remove cursor --dry-run` — 預覽刪除
-- `vibe adapt --remove cursor --confirm` — 刪除並備份
+### 常用參數
 
-## 支援的 AI 工具
+```bash
+vibe init --lang zh-TW       # 用繁體中文模板
+vibe init --force             # 重新初始化（也可以拿來重開已結案的專案）
+vibe sync --compact           # 收工時順便壓縮舊資料
+vibe sync --close             # 專案做完了，產出回顧報告並結案
+vibe adapt --add cursor       # 加入 Cursor 的設定檔
+vibe adapt --remove cursor    # 預覽會刪什麼（預設不會真的刪）
+vibe adapt --list             # 看哪些工具已啟用
+```
 
-| 工具 | 生成的設定檔 | 自動偵測 |
-|------|-------------|---------|
-| AGENTS.md | `AGENTS.md` | `AGENTS.md` 已存在 |
-| Claude Code | `CLAUDE.md` + `.claude/rules/` | `.claude/` 目錄 |
-| Antigravity / Gemini | `GEMINI.md` | `GEMINI.md` 或 `.gemini/` |
-| Cursor | `.cursor/rules/*.mdc` | `.cursor/` 目錄 |
-| GitHub Copilot | `.github/copilot-instructions.md` | 既有 copilot 設定 |
-| Windsurf | `.windsurf/rules/*.md` | `.windsurf/` 目錄 |
-| Cline | `.clinerules/*.md` | `.clinerules/` 目錄 |
-| Roo Code | `.roo/rules/*.md` | `.roo/` 目錄 |
+## 支援哪些 AI 工具？
 
-只有偵測到的工具才會生成設定檔。不會產生多餘檔案。
+| 工具 | 會幫你生成 | 怎麼偵測 |
+|------|-----------|---------|
+| AGENTS.md（通用標準） | `AGENTS.md` | 專案裡已有 `AGENTS.md` |
+| Claude Code | `CLAUDE.md` + `.claude/rules/` | 有 `.claude/` 資料夾 |
+| Antigravity / Gemini | `GEMINI.md` | 有 `GEMINI.md` 或 `.gemini/` |
+| Cursor | `.cursor/rules/*.mdc` | 有 `.cursor/` 資料夾 |
+| GitHub Copilot | `.github/copilot-instructions.md` | 有 copilot 設定檔 |
+| Windsurf | `.windsurf/rules/*.md` | 有 `.windsurf/` 資料夾 |
+| Cline | `.clinerules/*.md` | 有 `.clinerules/` 資料夾 |
+| Roo Code | `.roo/rules/*.md` | 有 `.roo/` 資料夾 |
+
+只會幫你生有在用的工具的設定，不會多生垃圾檔案。兩個以上工具同時啟用時，會自動去除重複內容節省 Token。
 
 ## 安全機制
 
-- `vibe adapt --remove` 預設 **dry-run** — 需要 `--confirm` 才執行
-- 每次生成都保存快照用於差異偵測
-- 刪除前自動備份（保留最近 3 份）
-- 使用者手動修改的檔案會觸發覆寫警告
+- 刪除設定檔前會先秀預覽，確認才會動手（還會自動備份最近 3 份）
+- 每次生成檔案都存快照，下次要覆蓋時會偵測你有沒有手動改過
+- Clone 別人的專案如果裡面有 `.vibe/`，`vibe start` 會跳警告提醒你檢查
+- 狀態檔不能拿來注入惡意指令（有掃描機制）
 
-## Autoresearch 整合
+## 搭配 Autoresearch 自動進化
 
-支援 [autoresearch](https://github.com/uditgoenka/autoresearch) 自動優化迴圈。`vibe sync` 自動偵測實驗 commit 並記錄到 `state/experiments.md`。
+如果你有用 [autoresearch](https://github.com/uditgoenka/autoresearch) 做自動優化實驗，`vibe sync` 會自動偵測實驗性的 git commit，幫你分類哪些成功保留、哪些已經回滾，紀錄在 `state/experiments.md`。
+
+下次 `vibe start` 開工時，面板直接告訴你：「昨晚跑了 50 輪實驗，12 個保留、38 個回滾。」
 
 ## 授權
 
-MIT
+MIT — 隨便用，不用付錢。

@@ -6,9 +6,9 @@
 
 Let any AI model — Claude, GPT, Gemini, or local models — instantly sync with your project's context by reading a single `.vibe/` directory.
 
-## Why vibe?
+## Why vibe-state-cli?
 
-| Problem | How vibe solves it |
+| Problem | How vibe-state-cli solves it |
 |---------|-------------------|
 | AI loses memory every session | `.vibe/state/` persists across sessions and tools |
 | Switching AI tools = starting over | 8 adapters generate each tool's native config from one source |
