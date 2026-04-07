@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger("vibe.git")
 
 
 @dataclass
@@ -19,7 +22,9 @@ class GitStatus:
 
 def git_available() -> bool:
     """Check if git is available in PATH."""
-    return shutil.which("git") is not None
+    available = shutil.which("git") is not None
+    logger.debug("git available: %s", available)
+    return available
 
 
 def get_head_hash(root: Path) -> str:

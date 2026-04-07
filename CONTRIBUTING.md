@@ -7,14 +7,28 @@ Thank you for your interest in contributing!
 ```bash
 git clone https://github.com/vibe-state-cli/vibe-state-cli.git
 cd vibe-state-cli
-pip install -e ".[dev]"
+make install              # Uses uv sync + pre-commit install
 ```
+
+Requires [uv](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ## Running Tests
 
 ```bash
-ruff check src/ tests/    # Lint
-pytest tests/ -v          # Tests
+make lint                 # uv run ruff check
+make test                 # uv run pytest
+make cov                  # uv run pytest --cov
+make typecheck            # uv run mypy
+make build                # uv run python -m build
+```
+
+## Dependency Management
+
+Dependencies are locked via `uv.lock` (committed to git). This guarantees every contributor gets the exact same versions.
+
+```bash
+# After adding a dependency to pyproject.toml:
+make lock                 # Regenerates uv.lock
 ```
 
 ## Project Structure

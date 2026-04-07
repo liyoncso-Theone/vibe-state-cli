@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("vibe.config")
 
 
 class VibeSection(BaseModel):
@@ -48,6 +51,7 @@ def load_config(vibe_dir: Path) -> VibeConfig:
     """Load config from .vibe/config.toml, or return defaults."""
     config_path = vibe_dir / "config.toml"
     if not config_path.exists():
+        logger.debug("No config.toml found, using defaults")
         return VibeConfig()
 
     import sys

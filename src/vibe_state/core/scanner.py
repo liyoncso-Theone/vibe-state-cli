@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger("vibe.scanner")
 
 TOOL_SIGNATURES: dict[str, list[str]] = {
     "claude": [".claude", "CLAUDE.md"],
@@ -62,6 +65,7 @@ def scan_project(root: Path | None = None) -> ScanResult:
 
     # Git detection
     result.has_git = (project_root / ".git").is_dir()
+    logger.debug("Git detected: %s", result.has_git)
 
     # AI tool detection
     for tool, signatures in TOOL_SIGNATURES.items():
@@ -69,6 +73,7 @@ def scan_project(root: Path | None = None) -> ScanResult:
             if (project_root / sig).exists():
                 if tool not in result.detected_tools:
                     result.detected_tools.append(tool)
+                    logger.debug("Tool detected: %s (via %s)", tool, sig)
                 break
 
     # Language detection via manifest files
@@ -77,9 +82,11 @@ def scan_project(root: Path | None = None) -> ScanResult:
             if "*" in manifest:
                 if list(project_root.glob(manifest)):
                     result.languages.append(lang)
+                    logger.debug("Language detected: %s (via glob %s)", lang, manifest)
                     break
             elif (project_root / manifest).exists():
                 result.languages.append(lang)
+                logger.debug("Language detected: %s (via %s)", lang, manifest)
                 break
 
     # Framework hints from manifest content
@@ -91,7 +98,9 @@ def scan_project(root: Path | None = None) -> ScanResult:
                 for keyword, framework in hints.items():
                     if keyword in content and framework not in result.frameworks:
                         result.frameworks.append(framework)
+                        logger.debug("Framework detected: %s (via %s)", framework, manifest_name)
             except OSError:
-                pass
+                logger.debug("Could not read %s for framework hints", manifest_path)
 
+    logger.debug("Scan result: %s", result)
     return result

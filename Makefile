@@ -1,21 +1,29 @@
-.PHONY: install lint test cov clean build
+.PHONY: install lint test cov clean build lock sync
 
-## Install dev dependencies
+## Install all dependencies (runtime + dev) from lockfile — reproducible
 install:
-	pip install -e ".[dev]"
-	pre-commit install
+	uv sync --all-extras
+	uv run pre-commit install
+
+## Regenerate uv.lock from pyproject.toml
+lock:
+	uv lock
 
 ## Run linter
 lint:
-	ruff check src/ tests/
+	uv run ruff check src/ tests/
 
 ## Run tests
 test:
-	pytest tests/ -v --tb=short
+	uv run pytest tests/ -v --tb=short
 
 ## Run tests with coverage
 cov:
-	pytest tests/ --cov=vibe_state --cov-report=term-missing
+	uv run pytest tests/ --cov=vibe_state --cov-report=term-missing
+
+## Type check
+typecheck:
+	uv run mypy src/vibe_state/ --ignore-missing-imports
 
 ## Clean build artifacts
 clean:
@@ -24,4 +32,4 @@ clean:
 
 ## Build distribution
 build:
-	python -m build
+	uv build

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from vibe_state.core.state import read_state_file, write_state_file
+
+logger = logging.getLogger("vibe.compactor")
 
 
 @dataclass
@@ -20,6 +23,7 @@ class CompactResult:
 
 def compact_tasks(vibe_dir: Path, stale_days: int = 30) -> CompactResult:
     """Archive [x] tasks, mark stale [ ] tasks as [~], trim current.md."""
+    logger.debug("Starting compaction (stale_days=%d)", stale_days)
     result = CompactResult()
 
     # ── Tasks: archive [x] and detect stale ──

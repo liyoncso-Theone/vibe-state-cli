@@ -152,11 +152,11 @@ def check_fingerprint(vibe_dir: Path) -> bool:
     return f"{project_id}={token}" in known_lines
 
 
-def check_dangerous_directory() -> None:
-    """Warn if running in HOME or root directory."""
-    cwd = Path.cwd().resolve()
+def check_dangerous_directory(cwd: Path | None = None) -> None:
+    """Warn if running in HOME or root directory. Accepts cwd for testability."""
+    resolved = (cwd or Path.cwd()).resolve()
     dangerous = [Path.home().resolve(), Path("/").resolve()]
-    if cwd in dangerous:
+    if resolved in dangerous:
         console.print(
             "[bold red]Warning:[/] You are in your HOME or root directory.\n"
             "Running vibe init here will pollute this directory with .vibe/ files.\n"

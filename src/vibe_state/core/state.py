@@ -10,11 +10,14 @@ Safety features:
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+
+logger = logging.getLogger("vibe.state")
 
 STATE_FILES = [
     "architecture.md",
@@ -91,6 +94,7 @@ def write_state_file(vibe_dir: Path, filename: str, content: str) -> None:
     """Write content to a state file atomically (temp + rename)."""
     state_dir = ensure_state_dir(vibe_dir)
     path = _validate_filename(state_dir, filename)
+    logger.debug("Writing state file: %s (%d chars)", filename, len(content))
 
     with _file_lock(path):
         # Write to temp file in same directory, then atomic rename
