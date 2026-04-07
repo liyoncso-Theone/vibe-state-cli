@@ -314,6 +314,7 @@ class TestCliSync:
         mp.undo()
 
     def test_sync_includes_diff_stat(self, tmp_path: Path) -> None:
+        """Sync must include 'Files changed' block when commits have file diffs."""
         mp = pytest.MonkeyPatch()
         mp.chdir(tmp_path)
         _git_init(tmp_path)
@@ -325,17 +326,18 @@ class TestCliSync:
         )
         runner.invoke(app, ["init"])
         runner.invoke(app, ["start"])
-        (tmp_path / "app.py").write_text("x = 2\ny = 3\n")
-        (tmp_path / "b.py").write_text("b = 1\n")
-        subprocess.run(["git", "add", "b.py"], cwd=tmp_path, capture_output=True)
+        # Commit a NEW file so diff_stat between sync cursor and HEAD is non-empty
+        (tmp_path / "new_feature.py").write_text("print('hello')\n")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
         subprocess.run(
-            ["git", "commit", "-q", "-m", "feat: add b"],
+            ["git", "commit", "-q", "-m", "feat: add new feature"],
             cwd=tmp_path, capture_output=True,
         )
         result = runner.invoke(app, ["sync"])
         assert result.exit_code == 0
         current = read_state_file(tmp_path / ".vibe", "current.md")
-        assert "Sync [" in current
+        assert "Files changed" in current
+        assert "new_feature.py" in current
         mp.undo()
 
     def test_sync_records_experiments(self, tmp_path: Path) -> None:
