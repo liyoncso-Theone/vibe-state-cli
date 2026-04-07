@@ -43,3 +43,6 @@ htmlcov/
 # Keep .vibe/ tracked for dogfooding, but ignore backups/snapshots
 .vibe/backups/
 .vibe/snapshots/
+
+# Internal docs (dev-only, not published)
+docs/internal/
