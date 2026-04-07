@@ -63,12 +63,14 @@ def get_log_since(root: Path, since_hash: str, limit: int = 50) -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
-def get_diff_stat(root: Path, since_hash: str = "") -> str:
-    """Get diff --stat output."""
+def get_diff_stat(root: Path, since_hash: str = "", log_limit: int = 50) -> str:
+    """Get diff --stat output. On first sync (no cursor), matches log range."""
     if since_hash:
         cmd = ["git", "diff", "--stat", f"{since_hash}..HEAD"]
     else:
-        cmd = ["git", "diff", "--stat"]
+        # First sync: diff the same range as get_log_since (HEAD~N..HEAD)
+        # Gracefully clamps to root commit if repo has fewer than N commits
+        cmd = ["git", "diff", "--stat", f"HEAD~{log_limit}..HEAD"]
     result = subprocess.run(cmd, cwd=root, capture_output=True, text=True)
     return result.stdout.strip() if result.returncode == 0 else ""
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from vibe_state.config import AdaptersSection, VibeConfig, load_config, save_config
 from vibe_state.core.templates import render_template
 
@@ -37,13 +39,33 @@ class TestConfigSaveLoad:
         config = load_config(tmp_path)
         assert config.vibe.version == 1
 
+    def test_save_preserves_header_comments(self, tmp_path: Path) -> None:
+        """Header comments in config.toml must survive save_config."""
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            "# Team config — do not change compact_threshold!\n"
+            "# Updated by DevOps on 2026-04-01\n"
+            "\n"
+            '[vibe]\nversion = 1\nlang = "en"\n',
+            encoding="utf-8",
+        )
+        config = load_config(tmp_path)
+        config.adapters.enabled = ["agents_md", "cursor"]
+        save_config(tmp_path, config)
+
+        saved = config_path.read_text(encoding="utf-8")
+        assert "# Team config" in saved
+        assert "# Updated by DevOps" in saved
+        assert "cursor" in saved
+
 
 class TestConfigMalformed:
-    def test_malformed_toml_returns_defaults(self, tmp_path: Path) -> None:
+    def test_malformed_toml_halts_execution(self, tmp_path: Path) -> None:
+        """Corrupt config must STOP execution, not silently use defaults."""
         config_path = tmp_path / "config.toml"
         config_path.write_text("INVALID{{{TOML", encoding="utf-8")
-        config = load_config(tmp_path)
-        assert config.vibe.version == 1
+        with pytest.raises(SystemExit):
+            load_config(tmp_path)
 
 
 class TestConfigDedup:

@@ -91,18 +91,30 @@ def load_config(vibe_dir: Path) -> VibeConfig:
     except Exception as e:
         from rich.console import Console
 
-        Console().print(
-            f"[red]Error:[/] Failed to parse config.toml: {e}\n"
-            f"[dim]Using defaults. Fix or delete .vibe/config.toml to resolve.[/]"
+        Console(stderr=True).print(
+            f"[bold red]Error:[/] Failed to parse config.toml: {e}\n"
+            f"[dim]Fix or delete .vibe/config.toml to continue.[/]"
         )
-        return VibeConfig()
+        raise SystemExit(1) from e
 
 
 def save_config(vibe_dir: Path, config: VibeConfig) -> None:
-    """Save config to .vibe/config.toml."""
+    """Save config to .vibe/config.toml, preserving header comments."""
     import tomli_w
 
     config_path = vibe_dir / "config.toml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "wb") as f:
-        tomli_w.dump(config.model_dump(), f)
+
+    # Preserve header comment block from existing file
+    header_lines: list[str] = []
+    if config_path.exists():
+        for line in config_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped == "":
+                header_lines.append(line)
+            else:
+                break
+
+    new_data = tomli_w.dumps(config.model_dump())
+    header = "\n".join(header_lines) + "\n" if header_lines else ""
+    config_path.write_text(header + new_data, encoding="utf-8", newline="\n")
