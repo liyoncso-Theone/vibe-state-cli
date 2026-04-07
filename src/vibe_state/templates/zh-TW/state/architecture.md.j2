@@ -1,0 +1,20 @@
+# 系統架構
+
+## 技術堆疊
+{% for lang in languages -%}
+- 語言：{{ lang }}
+{% endfor -%}
+{% for fw in frameworks -%}
+- 框架：{{ fw }}
+{% endfor -%}
+{% if not languages and not frameworks -%}
+- （尚未偵測到 — 設定後更新）
+{% endif %}
+
+## 系統設計
+
+（隨專案演進填入）
+
+## 決策歷史
+
+> 按時間倒序。格式：### [YYYY-MM-DD] 標題

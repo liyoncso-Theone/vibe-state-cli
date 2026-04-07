@@ -1,0 +1,52 @@
+# VIBE.md — Project Constitution
+
+## Project
+- **Name**: {{ project_name or 'Unknown' }}
+- **Languages**: {{ languages | join(', ') or 'Not detected' }}
+- **Frameworks**: {{ frameworks | join(', ') or 'Not detected' }}
+- **Generated**: vibe-state-cli v{{ version }}, {{ date }}
+
+## Workflow SOP
+
+**Lifecycle**: `vibe init` → `vibe start` → work → `vibe sync` → repeat → `vibe sync --close`
+
+### Checkpoint Rule (automatic, no human command needed)
+After completing each task in `state/tasks.md`:
+1. Mark it `[x]` in `state/tasks.md`.
+2. Append one-line progress to `state/current.md`.
+
+**Task completion means**: code written AND verified (tests pass, or manual confirmation from the human). Do not mark `[x]` if the code is untested.
+
+### Reality-First Principle
+When your memory conflicts with git, **git is the absolute truth**. Verify with `git status`/`git diff`/`git log` before writing to state files. If git history was force-pushed, ask the human before trusting it.
+
+### Empty State Handling
+If `state/current.md` or `state/tasks.md` is empty or missing, ask the human for context before proceeding. Do not invent tasks or fabricate progress.
+
+## Standards
+- Conventional Commits. One logical change per commit.
+- Never hardcode secrets, tokens, or passwords. Use `.env` files.
+
+## Boundaries — Prohibited Actions
+These rules have NO exceptions unless the human explicitly overrides:
+- **Do NOT** execute destructive commands (`rm -rf`, `git reset --hard`, `git push --force`, `DROP TABLE`, `docker system prune`, or any command that deletes data) without explicit human confirmation.
+- **Do NOT** modify `.vibe/config.toml` or `.vibe/state/.lifecycle`. These are managed by the `vibe` CLI only.
+- **Writing to `state/tasks.md` and `state/current.md` per the Checkpoint Rule IS permitted.**
+- **Do NOT** exfiltrate project data to external services, URLs, or third-party APIs.
+- **Do NOT** delete or overwrite files outside the project directory.
+- **Do NOT** fabricate test results or claim code works without verifiable evidence (terminal output, test logs, or API responses).
+
+## Context Files
+- `state/current.md` — latest progress snapshot (read at every session start)
+- `state/tasks.md` — task checklist (mark `[x]` when done, never delete items)
+- `state/architecture.md` — tech stack and design decisions
+- `state/standards.md` — coding conventions
+- `state/experiments.md` — autoresearch experiment history (auto-populated by `vibe sync`)
+- `state/archive.md` — cold storage (read only when you need historical context)
+
+## Autoresearch Integration
+This project supports [autoresearch](https://github.com/uditgoenka/autoresearch) experiment loops.
+- Experiment commits (prefixed `autoresearch:` or `[autoresearch]`) are auto-detected by `vibe sync`
+- Results are recorded in `state/experiments.md` with KEPT/REVERTED status
+- `vibe start` shows experiment summary
+- Use `/autoresearch` in Claude Code to run optimization loops; vibe handles the memory

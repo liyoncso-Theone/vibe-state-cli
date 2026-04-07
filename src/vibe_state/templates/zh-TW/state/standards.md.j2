@@ -1,0 +1,16 @@
+# 開發規範
+
+## 命名
+{% if 'Python' in languages -%}
+- 變數/函式：snake_case，類別：PascalCase，常數：UPPER_SNAKE_CASE
+{% elif 'TypeScript' in languages or 'Node.js' in languages -%}
+- 變數/函式：camelCase，類別/元件：PascalCase，常數：UPPER_SNAKE_CASE
+{% else -%}
+- （選定語言後制定）
+{% endif %}
+
+## 版控
+- Conventional Commits。每次 commit 僅限單一邏輯變更。
+
+## 安全性
+- 禁止硬編碼密鑰。使用 .env 管理。

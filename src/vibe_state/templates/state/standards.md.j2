@@ -1,0 +1,16 @@
+# Coding Standards
+
+## Naming
+{% if 'Python' in languages -%}
+- Variables/functions: snake_case, Classes: PascalCase, Constants: UPPER_SNAKE_CASE
+{% elif 'TypeScript' in languages or 'Node.js' in languages -%}
+- Variables/functions: camelCase, Classes/Components: PascalCase, Constants: UPPER_SNAKE_CASE
+{% else -%}
+- (define after choosing language)
+{% endif %}
+
+## Version Control
+- Conventional Commits. One logical change per commit.
+
+## Security
+- Never hardcode secrets. Use .env files.

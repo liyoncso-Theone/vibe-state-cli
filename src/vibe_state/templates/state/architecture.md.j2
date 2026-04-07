@@ -1,0 +1,20 @@
+# Architecture
+
+## Tech Stack
+{% for lang in languages -%}
+- Language: {{ lang }}
+{% endfor -%}
+{% for fw in frameworks -%}
+- Framework: {{ fw }}
+{% endfor -%}
+{% if not languages and not frameworks -%}
+- (not yet detected — update after setup)
+{% endif %}
+
+## System Design
+
+(update as the project evolves)
+
+## Decision History
+
+> Reverse chronological. Format: ### [YYYY-MM-DD] Title
