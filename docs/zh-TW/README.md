@@ -21,8 +21,10 @@
 ## 安裝
 
 ```bash
-pip install vibe-state-cli
+pipx install vibe-state-cli
 ```
+
+> 為什麼用 `pipx` 不用 `pip`？因為這是 CLI 工具，不是函式庫。`pipx` 會自動建隔離環境，不會污染你的系統 Python。如果還沒裝 pipx：`pip install pipx`
 
 ## 三分鐘上手
 
