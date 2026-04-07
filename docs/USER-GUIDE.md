@@ -119,10 +119,33 @@ vibe status
 vibe adapt --list                          # 查看所有 adapter（ON/OFF）
 vibe adapt --add cursor                    # 啟用 Cursor adapter
 vibe adapt --add claude                    # 啟用 Claude Code adapter
-vibe adapt --sync                          # 重新生成所有已啟用 adapter 的檔案
+vibe adapt --sync --confirm                # 重新生成所有已啟用 adapter 的檔案
 vibe adapt --remove cursor --dry-run       # 預覽將刪除的檔案
 vibe adapt --remove cursor --confirm       # 確認刪除（自動備份）
 ```
+
+---
+
+## 智慧遷移
+
+如果你的專案已經有 `CLAUDE.md`、`AGENTS.md`、`.cursorrules` 等 AI 設定檔，`vibe init` 會自動偵測並匯入你的規則：
+
+```text
+$ vibe init
+Scanning project...
+
+Found 2 existing config file(s):
+  - CLAUDE.md
+  - .cursorrules
+Imported 9 rules into .vibe/state/standards.md
+
+The following legacy config files have been imported into .vibe/
+and are no longer needed:
+  - CLAUDE.md
+  - .cursorrules
+```
+
+你的規則會被完整保留到 `.vibe/state/standards.md`。原始檔案不會被覆蓋或刪除，什麼時候清理由你決定。
 
 ---
 
