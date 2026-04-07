@@ -150,7 +150,7 @@ flowchart TD
 
     INIT --> CLAUDE_IMPORT["CLAUDE.md<br/>📄 @AGENTS.md 匯入<br/>+ Claude 專屬指令"]
 
-    INIT --> CURSOR_SLIM[".cursor/rules/vibe.mdc<br/>📄 slim 模式<br/>frontmatter + 'See AGENTS.md'<br/>+ Session Start 指令"]
+    INIT --> CURSOR_SLIM[".cursor/rules/vibe-standards.mdc<br/>📄 slim 模式<br/>frontmatter + 'See AGENTS.md'<br/>+ Session Start 指令"]
 
     AGENTS_FULL -.->|"Token: ~350"| TOKEN1["完整 body"]
     CLAUDE_IMPORT -.->|"Token: ~80"| TOKEN2["只有 @import + 專屬"]

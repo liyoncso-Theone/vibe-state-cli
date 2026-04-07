@@ -19,7 +19,7 @@ make lint                 # uv run ruff check
 make test                 # uv run pytest
 make cov                  # uv run pytest --cov
 make typecheck            # uv run mypy
-make build                # uv run python -m build
+make build                # uv build
 ```
 
 ## Dependency Management
