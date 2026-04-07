@@ -83,8 +83,12 @@ def sync(
                 f"[green]Synced:[/] {len(commits)} commits appended to state/current.md"
             )
 
-            # Detect autoresearch experiment commits
-            experiments = detect_experiment_commits(root, last_sync)
+            # Detect autoresearch experiment commits (patterns from config)
+            experiments = detect_experiment_commits(
+                root, last_sync,
+                commit_patterns=config.experiments.commit_patterns,
+                revert_prefixes=config.experiments.revert_prefixes,
+            )
             if experiments:
                 kept = sum(1 for e in experiments if not e.is_revert)
                 reverted = sum(1 for e in experiments if e.is_revert)

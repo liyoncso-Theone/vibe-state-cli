@@ -90,13 +90,20 @@ def write_sync_cursor(vibe_dir: Path, head_hash: str) -> None:
 
 # ── Autoresearch commit detection ──
 
-# Patterns that autoresearch uses in commit messages
-AUTORESEARCH_PATTERNS = [
+# Default patterns (used when no config is available)
+DEFAULT_EXPERIMENT_PATTERNS = [
     "autoresearch:",
     "experiment:",
     "[autoresearch]",
     "[experiment]",
     "auto-research",
+]
+
+DEFAULT_REVERT_PREFIXES = [
+    "revert",
+    "reset",
+    "rollback",
+    "undo",
 ]
 
 
@@ -108,24 +115,58 @@ class ExperimentCommit:
 
 
 def detect_experiment_commits(
-    root: Path, since_hash: str = "", limit: int = 100
+    root: Path,
+    since_hash: str = "",
+    limit: int = 100,
+    commit_patterns: list[str] | None = None,
+    revert_prefixes: list[str] | None = None,
 ) -> list[ExperimentCommit]:
-    """Detect autoresearch-style commits since last sync."""
+    """Detect autoresearch-style commits since last sync.
+
+    Args:
+        commit_patterns: Patterns to match in commit messages (from config).
+        revert_prefixes: Keywords indicating a failed experiment. Only matches
+            when the keyword appears in the PREFIX portion of the message
+            (the part between the pattern match and the first `:` or ` - `),
+            NOT in the general message body. This prevents false positives
+            like "fix revert payment issue" being flagged as a revert.
+    """
+    patterns = commit_patterns or DEFAULT_EXPERIMENT_PATTERNS
+    revert_kw = revert_prefixes or DEFAULT_REVERT_PREFIXES
+
     commits = get_log_since(root, since_hash, limit=limit)
     experiments: list[ExperimentCommit] = []
     for line in commits:
         parts = line.split(" ", 1)
-        if len(parts) < 2:  # pragma: no cover — defensive guard for malformed git output
+        if len(parts) < 2:  # pragma: no cover — defensive guard
             continue
         commit_hash, msg = parts[0], parts[1]
         msg_lower = msg.lower()
 
-        is_experiment = any(p in msg_lower for p in AUTORESEARCH_PATTERNS)
-        if not is_experiment:
+        # Check if this commit matches any experiment pattern
+        matched_pattern = ""
+        for p in patterns:
+            if p in msg_lower:
+                matched_pattern = p
+                break
+        if not matched_pattern:
             continue
 
-        is_revert = "revert" in msg_lower or "reset" in msg_lower
+        # Determine revert status from the PREFIX only
+        # e.g., "autoresearch: revert - metric dropped" → revert is in prefix
+        # e.g., "experiment: fix revert payment issue" → revert is in body, NOT prefix
+        prefix_end = msg_lower.find(matched_pattern) + len(matched_pattern)
+        # Take the first ~30 chars after the pattern as "prefix zone"
+        prefix_zone = msg_lower[prefix_end:prefix_end + 30].strip().lstrip(":").lstrip()
+        # Check if any revert keyword is the FIRST word in the prefix zone
+        first_word = prefix_zone.split()[0] if prefix_zone.split() else ""
+        is_revert = first_word in revert_kw
+
         experiments.append(ExperimentCommit(
-            hash=commit_hash, message=msg, is_revert=is_revert
+            hash=commit_hash, message=msg, is_revert=is_revert,
         ))
+        logger.debug(
+            "Experiment commit: %s [%s] %s",
+            commit_hash, "REVERTED" if is_revert else "KEPT", msg,
+        )
     return experiments

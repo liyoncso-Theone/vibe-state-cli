@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 
 from vibe_state.core.git_ops import (
-    ExperimentCommit,
     git_available,
     read_sync_cursor,
     write_sync_cursor,
@@ -166,53 +165,56 @@ class TestExperimentDetection:
         experiments = detect_experiment_commits(tmp_path)
         assert experiments == []
 
-    def test_parses_experiment_commit_fields(self) -> None:
-        """Test the parsing logic directly."""
-        commits = [
-            "abc1234 autoresearch: try lr=0.01",
-            "def5678 normal commit message",
-            "ghi9012 autoresearch: revert - metric decreased",
-            "jkl3456 [autoresearch] try batch size 32",
-            "mno7890 experiment: try dropout 0.5",
-        ]
-        experiments: list[ExperimentCommit] = []
-        patterns = [
-            "autoresearch:", "experiment:", "[autoresearch]",
-            "[experiment]", "auto-research",
-        ]
-        for line in commits:
-            parts = line.split(" ", 1)
-            if len(parts) < 2:
-                continue
-            commit_hash, msg = parts[0], parts[1]
-            msg_lower = msg.lower()
-            is_experiment = any(p in msg_lower for p in patterns)
-            if not is_experiment:
-                continue
-            is_revert = "revert" in msg_lower or "reset" in msg_lower
-            experiments.append(ExperimentCommit(
-                hash=commit_hash, message=msg, is_revert=is_revert
-            ))
-        assert len(experiments) == 4
-        assert experiments[0].hash == "abc1234"
-        assert not experiments[0].is_revert
-        assert experiments[1].is_revert
-        assert experiments[2].hash == "jkl3456"
-        assert experiments[3].hash == "mno7890"
+    def test_revert_only_matches_prefix_not_body(self, tmp_path: Path) -> None:
+        """'revert' in the message body (not prefix) must NOT flag as reverted.
 
-    def test_empty_log(self) -> None:
-        experiments: list[ExperimentCommit] = []
-        assert len(experiments) == 0
+        e.g., 'experiment: fix revert payment issue' is a KEPT experiment,
+        because 'revert' appears in the body describing the task, not as
+        the experiment action prefix.
+        """
+        from vibe_state.core.git_ops import detect_experiment_commits
 
-    def test_all_normal_commits(self) -> None:
-        commits = ["abc feat: add feature", "def fix: bug fix"]
-        patterns = ["autoresearch:", "experiment:"]
-        experiments = []
-        for line in commits:
-            parts = line.split(" ", 1)
-            if len(parts) < 2:
-                continue
-            msg_lower = parts[1].lower()
-            if any(p in msg_lower for p in patterns):
-                experiments.append(parts[0])
-        assert len(experiments) == 0
+        _git_init(tmp_path)
+        for msg in [
+            "experiment: revert - metric dropped",  # prefix revert → REVERTED
+            "experiment: fix revert payment issue",  # body revert → KEPT
+            "autoresearch: reset to baseline",  # prefix reset → REVERTED
+            "autoresearch: implement password reset flow",  # body reset → KEPT
+        ]:
+            (tmp_path / "f.txt").write_text(msg)
+            subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", msg],
+                cwd=tmp_path, capture_output=True,
+            )
+
+        exps = detect_experiment_commits(tmp_path)
+        assert len(exps) == 4
+        # git log is newest-first, so reverse order from commit sequence
+        msgs = {e.message: e.is_revert for e in exps}
+        assert msgs["experiment: revert - metric dropped"] is True
+        assert msgs["experiment: fix revert payment issue"] is False
+        assert msgs["autoresearch: reset to baseline"] is True
+        assert msgs["autoresearch: implement password reset flow"] is False
+
+    def test_custom_patterns_from_config(self, tmp_path: Path) -> None:
+        """User-defined patterns in config override defaults."""
+        from vibe_state.core.git_ops import detect_experiment_commits
+
+        _git_init(tmp_path)
+        (tmp_path / "f.txt").write_text("x")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "[bot] try new approach"],
+            cwd=tmp_path, capture_output=True,
+        )
+
+        # Default patterns won't match [bot]
+        exps = detect_experiment_commits(tmp_path)
+        assert len(exps) == 0
+
+        # Custom pattern matches
+        exps = detect_experiment_commits(
+            tmp_path, commit_patterns=["[bot]"]
+        )
+        assert len(exps) == 1

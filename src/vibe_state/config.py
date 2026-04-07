@@ -40,11 +40,34 @@ class GitSection(BaseModel):
     auto_commit: bool = False
 
 
+class ExperimentsSection(BaseModel):
+    """Configuration for autoresearch experiment detection."""
+
+    # Patterns to match in commit messages (case-insensitive)
+    commit_patterns: list[str] = Field(default_factory=lambda: [
+        "autoresearch:",
+        "experiment:",
+        "[autoresearch]",
+        "[experiment]",
+        "auto-research",
+    ])
+
+    # Patterns that indicate a FAILED experiment (must appear BEFORE the message body)
+    # Only matches when the revert keyword is in the PREFIX portion (pattern + first word)
+    revert_prefixes: list[str] = Field(default_factory=lambda: [
+        "revert",
+        "reset",
+        "rollback",
+        "undo",
+    ])
+
+
 class VibeConfig(BaseModel):
     vibe: VibeSection = Field(default_factory=VibeSection)
     state: StateSection = Field(default_factory=StateSection)
     adapters: AdaptersSection = Field(default_factory=AdaptersSection)
     git: GitSection = Field(default_factory=GitSection)
+    experiments: ExperimentsSection = Field(default_factory=ExperimentsSection)
 
 
 def load_config(vibe_dir: Path) -> VibeConfig:
