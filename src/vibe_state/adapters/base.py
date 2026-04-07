@@ -120,9 +120,14 @@ class AdapterBase(ABC):
         return True
 
     def _write_file(self, path: Path, content: str) -> Path:
-        """Write content to file, creating parent dirs."""
+        """Write content to file with integrity marker."""
+        import hashlib
+
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8", newline="\n")
+        # Add integrity marker at end of file
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+        tagged = content.rstrip() + f"\n\n<!-- vibe-state-cli:integrity:{content_hash} -->\n"
+        path.write_text(tagged, encoding="utf-8", newline="\n")
         return path
 
     def _build_common_body(
