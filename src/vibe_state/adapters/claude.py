@@ -20,7 +20,7 @@ class ClaudeAdapter(AdapterBase):
     def emit(self, ctx: AdapterContext) -> list[Path]:
         files: list[Path] = []
 
-        # CLAUDE.md — skip if user already has one (migration preserves theirs)
+        # CLAUDE.md — skip if user already has one at root (migration preserves theirs)
         if "CLAUDE.md" not in ctx.user_owned_files:
             lines = [f"# CLAUDE.md — {ctx.project_name}", ""]
             if "agents_md" in ctx.enabled_adapters:

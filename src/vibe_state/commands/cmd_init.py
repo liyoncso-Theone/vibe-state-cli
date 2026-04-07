@@ -143,10 +143,10 @@ def init(
     from vibe_state.safety import save_snapshot
 
     ctx = build_adapter_context(Path.cwd())
-    # Tell adapters which root-level files belong to the user (don't overwrite)
+    # Tell adapters which files belong to the user (don't overwrite)
+    # Use relative path from project root for precise matching
     ctx.user_owned_files = [
-        f.name for f in migration.found_files
-        if f.parent == Path.cwd()  # Only root-level files (not subdirectory rules)
+        str(f.relative_to(Path.cwd())) for f in migration.found_files
     ]
     adapter_files: list[str] = []
     for adapter_name in selected_adapters:

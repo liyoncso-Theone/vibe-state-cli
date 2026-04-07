@@ -1,12 +1,6 @@
-# 實驗紀錄
+# Experiments
 
-> 由 `vibe sync` 偵測到 autoresearch commit 時自動填入。
-> 格式：每筆紀錄一次實驗迭代（保留或回滾）。
+> Auto-populated by `vibe sync` when autoresearch commits are detected.
+> Format: each entry records one experiment iteration (keep or revert).
 
-（尚無實驗紀錄）
-
-## Experiments [2026-04-07 11:34]
-Detected: 1 iterations (1 kept, 0 reverted)
-
-- [KEPT] `4475a85` autoresearch: try lr=0.01
-
+(No experiments recorded yet)
