@@ -2,11 +2,10 @@
 
 ## Project
 
-- Languages: Python
 
-- Variables/functions: snake_case, Classes: PascalCase, Constants: UPPER_SNAKE_CASE
-- Conventional Commits. One logical change per commit.
-- Never hardcode secrets. Use .env files.
+- 變數/函式：snake_case，類別：PascalCase，常數：UPPER_SNAKE_CASE
+- Conventional Commits。每次 commit 僅限單一邏輯變更。
+- 禁止硬編碼密鑰。使用 .env 管理。
 - DO NOT GIVE ME HIGH LEVEL SHIT. IF I ASK FOR A FIX OR EXPLANATION, I WANT ACTUAL CODE OR DETAILED EXPLANATION.
 - Always communicate in Traditional Chinese (繁體中文).
 - Suggest solutions that I didnt think about. Treat me as an expert.
@@ -26,6 +25,10 @@
 - **[動態載入與執行]**：若找到對應檔案，請靜默讀取其內容，並嚴格遵循該檔案內定義的執行順序、約束條件與輸出格式來完成任務。
 - **[未知技能回報]**：若使用者呼叫了不存在的技能，請回報「在 skills 目錄中找不到該技能」，並詢問是否需要協助建立新的技能樣板。
 
+## Security
+- Never hardcode secrets, tokens, or passwords
+- Use .env files for environment variables
+
 ## Session Start — READ THESE FILES
 At the beginning of every session, read these files for project context:
 - `.vibe/state/current.md` — latest progress and sync history
@@ -36,4 +39,4 @@ At the beginning of every session, read these files for project context:
 - Do NOT modify `.vibe/config.toml` or `.vibe/state/.lifecycle` directly
 - Do NOT run destructive commands without human confirmation
 
-<!-- vibe-state-cli:integrity:c7ae38e6c496 -->
+<!-- vibe-state-cli:integrity:5dd5e6d47f13 -->

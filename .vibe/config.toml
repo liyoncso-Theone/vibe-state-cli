@@ -1,6 +1,6 @@
 [vibe]
 version = 1
-lang = "en"
+lang = "zh-TW"
 
 [state]
 compact_threshold = 150

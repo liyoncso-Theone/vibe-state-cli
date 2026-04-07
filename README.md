@@ -2,21 +2,37 @@
 
 [English](README.md) | [繁體中文](docs/zh-TW/README.md)
 
-**Model-agnostic AI-human collaboration state management CLI.**
+**Stop losing your AI's memory every time you close the terminal.**
 
-Let any AI model — Claude, GPT, Gemini, or local models — instantly sync with your project's context by reading a single `.vibe/` directory.
+## What vibe-state-cli does
 
-## Why vibe-state-cli?
+It creates a `.vibe/` directory in your project that acts as a **shared brain** between you and any AI coding tool. When you switch from Claude Code to Cursor to Copilot, they all read from the same state — your progress, your tasks, your architecture decisions, your coding standards.
 
-| Problem | How vibe-state-cli solves it |
-|---------|-------------------|
-| AI loses memory every session | `.vibe/state/` persists across sessions and tools |
-| Switching AI tools = starting over | 8 adapters generate each tool's native config from one source |
-| CLAUDE.md grows forever, wastes tokens | `vibe sync --compact` auto-archives, keeps state lean (~684 tokens) |
-| Manual copy-paste of context prompts | `vibe init` scans your project and generates everything |
-| No structured handoff between sessions | `vibe sync` appends git state + C.L.E.A.R. review checklist |
+Five commands. That's it:
 
-Works **100% offline**. No API keys, no telemetry, no network calls.
+```bash
+vibe init      # Scan your project, set up .vibe/, detect your AI tools
+vibe start     # Load yesterday's context, check git, show what to work on
+vibe sync      # Save today's progress from git, review with C.L.E.A.R. checklist
+vibe status    # Quick look at project state (works anytime)
+vibe adapt     # Add or remove AI tool adapters
+```
+
+## What vibe-state-cli is trying to solve
+
+AI coding assistants are powerful but forgetful. Every session starts from zero. You waste time re-explaining your project, your conventions, your progress. And if you use more than one tool, each one lives in its own silo — Claude doesn't know what you did in Cursor, Copilot doesn't know what you told Gemini.
+
+vibe-state-cli fixes this by giving every AI tool a single source of truth to read from.
+
+It also prevents your AI context from growing out of control. As `current.md` and `tasks.md` accumulate history, the built-in compactor uses **Markdown AST parsing** to safely remove old sections without ever breaking code blocks or document structure.
+
+## What vibe-state-cli does NOT do
+
+- **Does not replace your existing setup.** If you already have a `CLAUDE.md`, `.cursorrules`, or `AGENTS.md`, vibe imports your rules and leaves your files alone. It's additive, not destructive.
+- **Does not require an API key.** Everything runs 100% offline. No telemetry, no network calls.
+- **Does not lock you in.** The `.vibe/` directory is plain Markdown files. You can read, edit, or delete them anytime. No proprietary format.
+- **Does not change how you work with AI.** You still talk to Claude, Cursor, Copilot the same way. vibe just makes sure they all start each session with the right context.
+- **Does not auto-commit or push code.** It only reads git status. Your repository is yours.
 
 ## Install
 
@@ -24,65 +40,55 @@ Works **100% offline**. No API keys, no telemetry, no network calls.
 pipx install vibe-state-cli
 ```
 
-## Quick Start
+> Why `pipx`? Because this is a CLI tool, not a library. `pipx` installs it in an isolated environment so it never conflicts with your project dependencies.
 
-```bash
-cd my-project
+## Smart Migration
 
-vibe init                # Initialize .vibe/ (auto-detects language, framework, AI tools)
-vibe start               # Daily start — load state, git check, auto-compact
-vibe sync                # Daily close — append git status, C.L.E.A.R. review
-vibe sync --compact      # Archive completed tasks, compress state files
-vibe sync --close        # End project — final sync + retrospective
-vibe status              # Check project state (anytime)
-vibe adapt --list        # See which AI tool adapters are enabled
+Already have AI config files? vibe detects them automatically:
+
+```text
+$ vibe init
+Scanning project...
+
+Found 2 existing config file(s):
+  - CLAUDE.md
+  - .cursorrules
+Imported 9 rules into .vibe/state/standards.md
+
+The following legacy config files have been imported into .vibe/
+and are no longer needed:
+  - CLAUDE.md
+  - .cursorrules
 ```
 
-## 5 Commands
-
-| Command | When | What it does |
-|---------|------|-------------|
-| `vibe init` | Once | Scan project, generate `.vibe/`, detect AI tools, emit adapter files |
-| `vibe start` | Daily | Load state, validate vs git, auto-compact if needed, Rich summary |
-| `vibe sync` | Daily | Append git status to state, C.L.E.A.R. checklist |
-| `vibe status` | Anytime | Show lifecycle, tasks, file sizes |
-| `vibe adapt` | As needed | `--add`/`--remove`/`--list`/`--sync` adapter files |
-
-### Common flags
-
-```bash
-vibe init --lang zh-TW       # Traditional Chinese templates
-vibe sync --compact           # Compact old state after sync
-vibe sync --close             # Close project with retrospective
-```
-
-Run `vibe --help` or `vibe <command> --help` for full options.
+Your rules are preserved. Your files are not overwritten. You decide when to clean up.
 
 ## Supported AI Tools
 
-| Tool | Generated Config | Auto-detected by |
-|------|-----------------|------------------|
-| AGENTS.md | `AGENTS.md` | `AGENTS.md` exists |
-| Claude Code | `CLAUDE.md` + `.claude/rules/` | `.claude/` directory |
-| Antigravity / Gemini | `GEMINI.md` | `GEMINI.md` or `.gemini/` |
-| Cursor | `.cursor/rules/*.mdc` | `.cursor/` directory |
+| Tool | What vibe generates | How it's detected |
+| ---- | ------------------- | ------------------- |
+| Claude Code | `.claude/rules/vibe-standards.md` | `.claude/` directory |
+| Cursor | `.cursor/rules/vibe-standards.mdc` | `.cursor/` directory |
 | GitHub Copilot | `.github/copilot-instructions.md` | existing copilot config |
-| Windsurf | `.windsurf/rules/*.md` | `.windsurf/` directory |
-| Cline | `.clinerules/*.md` | `.clinerules/` directory |
-| Roo Code | `.roo/rules/*.md` | `.roo/` directory |
+| Windsurf | `.windsurf/rules/vibe-standards.md` | `.windsurf/` directory |
+| Cline | `.clinerules/01-vibe-standards.md` | `.clinerules/` directory |
+| Roo Code | `.roo/rules/01-vibe-standards.md` | `.roo/` directory |
+| Antigravity / Gemini | `GEMINI.md` | `GEMINI.md` or `.gemini/` |
+| AGENTS.md (universal) | `AGENTS.md` | always generated |
 
-Only detected tools get adapter files generated. No bloat.
+Only detected tools get adapter files. When multiple adapters are active, duplicate content is automatically eliminated to save tokens.
 
 ## Autoresearch Integration
 
-Supports [autoresearch](https://github.com/uditgoenka/autoresearch) experiment loops. `vibe sync` auto-detects experiment commits and records results to `state/experiments.md`.
+Works with [autoresearch](https://github.com/uditgoenka/autoresearch) experiment loops. `vibe sync` detects experiment commits in your git history and records which ones were kept vs reverted in `state/experiments.md`. Patterns are configurable in `.vibe/config.toml`.
 
 ## Safety
 
-- `vibe adapt --remove` defaults to **dry-run** — requires `--confirm` to delete
-- Snapshots saved on every emit for diff detection
-- Backups kept (last 3) before any deletion
-- User-modified files trigger warnings before overwrite
+- Adapter removal defaults to **dry-run** — nothing gets deleted until you confirm
+- Every generated file gets a snapshot; vibe warns you before overwriting your manual edits
+- Backups are kept (last 3) before any deletion
+- Corrupt config halts execution instead of silently using defaults
+- File writes are atomic (temp + rename) with exponential backoff locking
 
 ## License
 

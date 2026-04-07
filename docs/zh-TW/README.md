@@ -4,19 +4,35 @@
 
 **讓你的 AI 助手不再失憶。**
 
-不管你用的是 Claude、Cursor、Copilot 還是其他工具，每次關掉對話，AI 就什麼都忘了。`vibe-state-cli` 幫你在專案裡建一個 `.vibe/` 資料夾當作共享大腦 — 任何 AI 工具打開就能接上之前的進度。
+## vibe-state-cli 做什麼
 
-## 為什麼需要 vibe-state-cli？
+在你的專案裡建一個 `.vibe/` 資料夾，當作你和所有 AI 工具之間的**共享大腦**。不管你用 Claude Code、Cursor 還是 Copilot，它們都讀同一份狀態 — 你的進度、任務、架構決策、編碼規範。
 
-| 你一定遇過這些問題 | vibe-state-cli 怎麼幫你 |
-|---|---|
-| 跟 AI 討論了兩小時的架構，關掉終端就全忘了 | `.vibe/state/` 把進度存在專案裡，換 session 也不會斷 |
-| 早上用 Claude Code，下午切 Cursor，兩邊互不認識 | 8 種工具的設定檔自動生成，共用同一份狀態 |
-| CLAUDE.md 越寫越肥，AI 開始胡說八道 | `vibe sync --compact` 自動歸檔舊任務，Token 控制在安全水位 |
-| 每次開新對話都要手動貼一大堆背景資料 | `vibe init` 一鍵掃描你的專案，全部幫你生好 |
-| 昨天做到哪了？AI 不記得，你也忘了 | `vibe sync` 自動把 git 紀錄寫進狀態檔，明天一開就能接著做 |
+五個指令，就這樣：
 
-完全離線，不需要 API key，不傳任何資料出去。
+```bash
+vibe init      # 掃描專案，建立 .vibe/，偵測你在用哪些 AI 工具
+vibe start     # 載入昨天的進度，檢查 git，告訴你今天該做什麼
+vibe sync      # 把今天的 git 變更存起來，跑 C.L.E.A.R. 自我審查
+vibe status    # 看一下專案目前的狀態（隨時可用）
+vibe adapt     # 新增或移除 AI 工具的設定檔
+```
+
+## vibe-state-cli 想解決什麼問題
+
+AI 寫程式很強，但每次關掉對話就全忘了。你花時間解釋過的專案背景、寫好的規範、做到一半的進度，下次開對話又要重來一遍。更慘的是，如果你同時用好幾個 AI 工具，每一個都活在自己的孤島裡 — Claude 不知道你在 Cursor 做了什麼，Copilot 不知道你跟 Gemini 討論過什麼。
+
+vibe-state-cli 把所有 AI 工具的記憶統一到同一個地方。
+
+另外，它會防止你的 AI 上下文越積越肥。當 `current.md` 和 `tasks.md` 的歷史紀錄越來越多，內建的壓縮器會用 **Markdown AST 語法樹解析**，安全地移除舊的段落，保證不會切斷程式碼區塊或破壞文件結構。
+
+## vibe-state-cli 不做什麼
+
+- **不取代你現有的設定。** 如果你已經有 `CLAUDE.md`、`.cursorrules` 或 `AGENTS.md`，vibe 會匯入你的規則，但不會動你的原始檔案。它是加法，不是減法。
+- **不需要 API key。** 完全離線運作。不傳任何資料出去，沒有遙測。
+- **不綁架你。** `.vibe/` 裡面全是純 Markdown，你隨時可以讀、改、刪。沒有專有格式。
+- **不改變你跟 AI 的互動方式。** 你還是用原本的方式跟 Claude、Cursor、Copilot 對話。vibe 只是確保每次開 session 時，AI 手上都有正確的上下文。
+- **不會幫你 commit 或 push。** 它只讀取 git 狀態，不碰你的程式碼庫。
 
 ## 安裝
 
@@ -24,67 +40,55 @@
 pipx install vibe-state-cli
 ```
 
-> 為什麼用 `pipx` 不用 `pip`？因為這是 CLI 工具，不是函式庫。`pipx` 會自動建隔離環境，不會污染你的系統 Python。如果還沒裝 pipx：`pip install pipx`
+> 為什麼用 `pipx` 不用 `pip`？因為這是 CLI 工具，不是函式庫。`pipx` 會自動建隔離環境，不會跟你的專案依賴打架。如果還沒裝 pipx：`pip install pipx`
 
-## 三分鐘上手
+## 智慧遷移
 
-```bash
-cd my-project
+已經有 AI 設定檔了？vibe 會自動偵測：
 
-vibe init                # 初始化（自動偵測你的語言、框架、用哪些 AI 工具）
-vibe start               # 開工（載入昨天的進度，順便幫你整理過長的檔案）
-vibe sync                # 收工（把今天的 git 變更存進去，列出審查清單）
+```text
+$ vibe init
+Scanning project...
+
+Found 2 existing config file(s):
+  - CLAUDE.md
+  - .cursorrules
+Imported 9 rules into .vibe/state/standards.md
+
+The following legacy config files have been imported into .vibe/
+and are no longer needed:
+  - CLAUDE.md
+  - .cursorrules
 ```
 
-就這樣。日常只需要這三個指令。
-
-## 全部指令一覽
-
-| 指令 | 什麼時候用 | 做什麼 |
-|------|-----------|--------|
-| `vibe init` | 專案開始時跑一次 | 掃描專案，建立 `.vibe/`，偵測你在用哪些 AI 工具並生成對應設定 |
-| `vibe start` | 每天開工 | 讀取狀態、比對 git、太長的自動壓縮，最後秀出今天的待辦摘要 |
-| `vibe sync` | 每天收工 | 把 git commit 紀錄附加到狀態檔，跑 C.L.E.A.R. 自我審查 |
-| `vibe status` | 想看就看 | 秀出專案目前的狀態：進度、任務數、檔案大小 |
-| `vibe adapt` | 需要時 | 管理 AI 工具的設定檔：新增、移除、同步、預覽 |
-
-### 其他常用的
-
-```bash
-vibe init --lang zh-TW       # 想要繁體中文模板
-vibe sync --compact           # 收工順便清理舊資料
-vibe sync --close             # 專案做完了，結案
-```
-
-其餘參數請用 `vibe --help` 或 `vibe sync --help` 查看。
+你的規則完整保留。你的檔案不會被覆蓋。什麼時候要清理，由你決定。
 
 ## 支援哪些 AI 工具？
 
-| 工具 | 會幫你生成 | 怎麼偵測 |
-|------|-----------|---------|
-| AGENTS.md（通用標準） | `AGENTS.md` | 專案裡已有 `AGENTS.md` |
-| Claude Code | `CLAUDE.md` + `.claude/rules/` | 有 `.claude/` 資料夾 |
-| Antigravity / Gemini | `GEMINI.md` | 有 `GEMINI.md` 或 `.gemini/` |
-| Cursor | `.cursor/rules/*.mdc` | 有 `.cursor/` 資料夾 |
+| 工具 | vibe 會幫你生成 | 怎麼偵測 |
+| ---- | --------------- | -------- |
+| Claude Code | `.claude/rules/vibe-standards.md` | 有 `.claude/` 資料夾 |
+| Cursor | `.cursor/rules/vibe-standards.mdc` | 有 `.cursor/` 資料夾 |
 | GitHub Copilot | `.github/copilot-instructions.md` | 有 copilot 設定檔 |
-| Windsurf | `.windsurf/rules/*.md` | 有 `.windsurf/` 資料夾 |
-| Cline | `.clinerules/*.md` | 有 `.clinerules/` 資料夾 |
-| Roo Code | `.roo/rules/*.md` | 有 `.roo/` 資料夾 |
+| Windsurf | `.windsurf/rules/vibe-standards.md` | 有 `.windsurf/` 資料夾 |
+| Cline | `.clinerules/01-vibe-standards.md` | 有 `.clinerules/` 資料夾 |
+| Roo Code | `.roo/rules/01-vibe-standards.md` | 有 `.roo/` 資料夾 |
+| Antigravity / Gemini | `GEMINI.md` | 有 `GEMINI.md` 或 `.gemini/` |
+| AGENTS.md（通用標準） | `AGENTS.md` | 預設生成 |
 
-只會幫你生有在用的工具的設定，不會多生垃圾檔案。兩個以上工具同時啟用時，會自動去除重複內容節省 Token。
-
-## 安全機制
-
-- 刪除設定檔前會先秀預覽，確認才會動手（還會自動備份最近 3 份）
-- 每次生成檔案都存快照，下次要覆蓋時會偵測你有沒有手動改過
-- Clone 別人的專案如果裡面有 `.vibe/`，`vibe start` 會跳警告提醒你檢查
-- 狀態檔不能拿來注入惡意指令（有掃描機制）
+只生成有在用的工具的設定，不會多生垃圾。多個 adapter 同時啟用時，自動去除重複內容節省 Token。
 
 ## 搭配 Autoresearch 自動進化
 
-如果你有用 [autoresearch](https://github.com/uditgoenka/autoresearch) 做自動優化實驗，`vibe sync` 會自動偵測實驗性的 git commit，幫你分類哪些成功保留、哪些已經回滾，紀錄在 `state/experiments.md`。
+支援 [autoresearch](https://github.com/uditgoenka/autoresearch) 自動優化實驗。`vibe sync` 會偵測 git 歷史中的實驗 commit，記錄哪些成功保留、哪些回滾。模式可在 `.vibe/config.toml` 自訂。
 
-下次 `vibe start` 開工時，面板直接告訴你：「昨晚跑了 50 輪實驗，12 個保留、38 個回滾。」
+## 安全機制
+
+- 刪除 adapter 預設 **dry-run** — 確認才會動手
+- 每次生成都存快照，要覆蓋時會先警告你有沒有手動改過
+- 刪除前自動備份（保留最近 3 份）
+- 設定檔損壞時直接停住，不會偷偷用預設值跑（防止誤刪資料）
+- 寫入是原子操作（temp + rename），搭配指數退避鎖防止併發衝突
 
 ## 授權
 

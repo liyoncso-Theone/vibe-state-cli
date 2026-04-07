@@ -1,12 +1,12 @@
-# Architecture
+# 系統架構
 
-## Tech Stack
-- Language: Python
+## 技術堆疊
+- 語言：Python
 
-## System Design
+## 系統設計
 
-(update as the project evolves)
+（隨專案演進填入）
 
-## Decision History
+## 決策歷史
 
-> Reverse chronological. Format: ### [YYYY-MM-DD] Title
+> 按時間倒序。格式：### [YYYY-MM-DD] 標題

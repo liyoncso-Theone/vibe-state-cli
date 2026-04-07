@@ -1,3 +1,3 @@
-# Tasks
+# 任務清單
 
-> Mark `[x]` when done. Never delete items. Stale items (>30d) become `[~]`.
+> 完成後標記 `[x]`，嚴禁刪除。超過 30 天未動標記 `[~]`。

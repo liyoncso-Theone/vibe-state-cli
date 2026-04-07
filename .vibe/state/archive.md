@@ -1,3 +1,3 @@
-# Archive
+# 冷藏庫
 
-> Cold storage. Not loaded daily — only when you need history.
+> 日常不讀取，僅需要時載入。
