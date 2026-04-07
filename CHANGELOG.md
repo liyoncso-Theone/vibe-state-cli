@@ -6,6 +6,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.0] — 2026-04-07
+
+### Added
+
+- **Smart migration**: `vibe init` detects existing CLAUDE.md, AGENTS.md, .cursorrules, .windsurfrules — imports rules into `.vibe/state/standards.md` without overwriting originals
+- **User file protection**: adapters skip generating files that already belong to the user (e.g., existing CLAUDE.md)
+- **Traditional Chinese documentation**: full zh-TW README and USER-GUIDE
+
+### Fixed
+
+- First-sync `diff_stat` now correctly diffs from root commit (was showing only uncommitted changes)
+- Three defensive programming fixes from red team audit (lock safety, config halt, atomic writes)
+- Correct cursor adapter output filename (`vibe-standards.mdc`, not `vibe.mdc`)
+- AGENTS.md markdown formatting (proper blank lines between headings and lists)
+- Standardized `pipx` across all documentation (was inconsistently using `pip`)
+
+### Changed
+
+- README rewritten with clear "what it does / what it tries to do / what it doesn't do" structure
+- Documentation reorganized and fully synced between EN and zh-TW
+- Internal docs moved to gitignored `docs/internal/`
+
+---
+
 ## [0.1.0] — 2026-04-07
 
 ### Added
