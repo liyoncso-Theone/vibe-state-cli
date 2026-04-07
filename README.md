@@ -63,6 +63,7 @@ vibe adapt --list        # See which AI tool adapters are enabled
 |------|-----------------|------------------|
 | AGENTS.md | `AGENTS.md` | `AGENTS.md` exists |
 | Claude Code | `CLAUDE.md` + `.claude/rules/` | `.claude/` directory |
+| Antigravity / Gemini | `GEMINI.md` | `GEMINI.md` or `.gemini/` |
 | Cursor | `.cursor/rules/*.mdc` | `.cursor/` directory |
 | GitHub Copilot | `.github/copilot-instructions.md` | existing copilot config |
 | Windsurf | `.windsurf/rules/*.md` | `.windsurf/` directory |
@@ -70,6 +71,10 @@ vibe adapt --list        # See which AI tool adapters are enabled
 | Roo Code | `.roo/rules/*.md` | `.roo/` directory |
 
 Only detected tools get adapter files generated. No bloat.
+
+## Autoresearch Integration
+
+Supports [autoresearch](https://github.com/uditgoenka/autoresearch) experiment loops. `vibe sync` auto-detects experiment commits and records results to `state/experiments.md`.
 
 ## Safety
 

@@ -55,7 +55,7 @@ def load_config(vibe_dir: Path) -> VibeConfig:
     if sys.version_info >= (3, 11):
         import tomllib
     else:
-        import tomli as tomllib
+        import tomli as tomllib  # pragma: no cover
 
     try:
         with open(config_path, "rb") as f:

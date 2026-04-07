@@ -43,3 +43,14 @@
 - `vibe sync` 使用純 git 附加（不依賴 LLM，廠商中立）
 - Adapter 從 `VIBE.md + state/ + config.toml` 組合衍生
 - `_build_common_body(slim=True)` 消除跨檔案 token 重複
+
+### 支援平台
+- Claude Code CLI + VS Code 擴充
+- Google Antigravity IDE + Gemini CLI
+- Cursor
+- GitHub Copilot（VS Code + GitHub.com）
+- Windsurf（Codeium）
+- Cline
+- Roo Code
+- OpenAI Codex CLI（透過 AGENTS.md）
+- 任何支援 AGENTS.md 的工具（Zed、Warp、Aider、Devin 等）

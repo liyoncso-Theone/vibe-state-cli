@@ -101,7 +101,7 @@ def write_state_file(vibe_dir: Path, filename: str, content: str) -> None:
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
                 f.write(content)
             os.replace(tmp_path, str(path))
-        except BaseException:
+        except BaseException:  # pragma: no cover — OS-level crash cleanup
             with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
             raise
@@ -128,7 +128,7 @@ def append_to_state_file(vibe_dir: Path, filename: str, content: str) -> None:
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
                 f.write(full_content)
             os.replace(tmp_path, str(path))
-        except BaseException:
+        except BaseException:  # pragma: no cover — OS-level crash cleanup
             with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
             raise

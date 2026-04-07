@@ -35,10 +35,14 @@ runner = CliRunner()
 
 def _git_init(path: Path) -> None:
     """Helper: init a git repo with dummy user config."""
-    os.system(
-        f'cd "{path}" && git init -q'
-        f" && git config user.email t@t"
-        f" && git config user.name t"
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=path, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t"], cwd=path, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"], cwd=path, capture_output=True
     )
 
 
@@ -138,8 +142,8 @@ class TestRegistry:
 
 class TestDetectExperiments:
     def test_detects_autoresearch_commits(self, tmp_path: Path) -> None:
-        (tmp_path / ".git").mkdir()
-        # Create actual git commits
+        import subprocess
+
         _git_init(tmp_path)
         for i, msg in enumerate([
             "autoresearch: try lr=0.01",
@@ -148,7 +152,13 @@ class TestDetectExperiments:
             "[autoresearch] try batch 32",
         ]):
             (tmp_path / f"f{i}.txt").write_text(str(i))
-            os.system(f'cd "{tmp_path}" && git add -A && git commit -q -m "{msg}"')
+            subprocess.run(
+                ["git", "add", "-A"], cwd=tmp_path, capture_output=True
+            )
+            subprocess.run(
+                ["git", "commit", "-q", "-m", msg],
+                cwd=tmp_path, capture_output=True,
+            )
 
         experiments = detect_experiment_commits(tmp_path, since_hash="")
         assert len(experiments) == 3
@@ -158,10 +168,15 @@ class TestDetectExperiments:
         assert len(reverted) == 1
 
     def test_no_experiments(self, tmp_path: Path) -> None:
-        (tmp_path / ".git").mkdir()
+        import subprocess
+
         _git_init(tmp_path)
         (tmp_path / "f.txt").write_text("x")
-        os.system(f'cd "{tmp_path}" && git add -A && git commit -q -m "feat: normal"')
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feat: normal"],
+            cwd=tmp_path, capture_output=True,
+        )
         assert detect_experiment_commits(tmp_path) == []
 
 

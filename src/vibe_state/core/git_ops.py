@@ -110,7 +110,7 @@ def detect_experiment_commits(
     experiments: list[ExperimentCommit] = []
     for line in commits:
         parts = line.split(" ", 1)
-        if len(parts) < 2:
+        if len(parts) < 2:  # pragma: no cover — defensive guard for malformed git output
             continue
         commit_hash, msg = parts[0], parts[1]
         msg_lower = msg.lower()

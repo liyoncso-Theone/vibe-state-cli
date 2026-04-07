@@ -1,8 +1,22 @@
 # vibe-state-cli
 
+[English](../../README.md) | [繁體中文](README.md)
+
 **廠商中立的 AI-人類協作狀態管理 CLI 工具。**
 
 讓任何 AI 模型 — Claude、GPT、Gemini 或本地模型 — 透過讀取一個 `.vibe/` 目錄，瞬間與你的專案上下文同步。
+
+## 為什麼用 vibe？
+
+| 痛點 | vibe 怎麼解 |
+|------|-----------|
+| AI 每次 session 結束就失憶 | `.vibe/state/` 跨 session 和工具持久化 |
+| 切換 AI 工具等於從頭開始 | 8 個 adapter 從同一個來源生成各工具原生設定 |
+| CLAUDE.md 越來越長浪費 token | `vibe sync --compact` 自動歸檔，維持精簡（~684 tokens） |
+| 手動複製貼上上下文 prompt | `vibe init` 掃描專案自動生成一切 |
+| 沒有結構化的 session 交接 | `vibe sync` 附加 git 狀態 + C.L.E.A.R. 審查 |
+
+**100% 離線運作**。無 API key、無遙測、無網路連線。
 
 ## 安裝
 
