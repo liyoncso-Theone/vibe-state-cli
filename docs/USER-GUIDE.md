@@ -8,9 +8,9 @@
 
 ```bash
 pipx install vibe-state-cli
-# 或
-pip install vibe-state-cli
 ```
+
+> `pipx` 會自動建隔離環境。如果還沒裝：`pip install pipx`
 
 ---
 

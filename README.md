@@ -48,14 +48,15 @@ vibe adapt --list        # See which AI tool adapters are enabled
 | `vibe status` | Anytime | Show lifecycle, tasks, file sizes |
 | `vibe adapt` | As needed | `--add`/`--remove`/`--list`/`--sync` adapter files |
 
-### Flags
+### Common flags
 
-- `vibe init --lang zh-TW` — Traditional Chinese templates
-- `vibe init --force` — Reinitialize or reopen a closed project
-- `vibe sync --compact` — Run memory compaction after sync
-- `vibe sync --close` — Close project with retrospective
-- `vibe adapt --remove cursor --dry-run` — Preview before deleting
-- `vibe adapt --remove cursor --confirm` — Delete with backup
+```bash
+vibe init --lang zh-TW       # Traditional Chinese templates
+vibe sync --compact           # Compact old state after sync
+vibe sync --close             # Close project with retrospective
+```
+
+Run `vibe --help` or `vibe <command> --help` for full options.
 
 ## Supported AI Tools
 

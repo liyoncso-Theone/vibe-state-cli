@@ -165,7 +165,7 @@ vibe start
 ✅ 自動偵測 autoresearch 實驗
 ✅ 嚴格安全邊界
 
-pip install vibe-state-cli
+pipx install vibe-state-cli
 
 #VibeCoding #AICoding #OpenSource
 ```
