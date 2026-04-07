@@ -150,11 +150,11 @@ def _check_fingerprint(vibe_dir: Path) -> bool:
     if not token:
         return False
 
-    # Check against user-local known fingerprints
+    # Check against user-local known fingerprints (line-based match)
     local_marker = Path.home() / ".vibe-fingerprints"
-    known = _read_known_fingerprints(local_marker)
+    known_lines = _read_known_fingerprints(local_marker).splitlines()
     project_id = vibe_dir.resolve().as_posix()
-    return f"{project_id}={token}" in known
+    return f"{project_id}={token}" in known_lines
 
 
 def _check_dangerous_directory() -> None:
@@ -233,7 +233,6 @@ def init(
         languages=scan.languages,
         frameworks=scan.frameworks,
         project_name=_sanitize_name(Path.cwd().name),
-        compact_threshold=config.state.compact_threshold,
         stale_task_days=config.state.stale_task_days,
         lang=lang,
     )

@@ -52,7 +52,8 @@ _SUSPICIOUS_PATTERNS = [
 
 def _is_suspicious_instruction(text: str) -> bool:
     """Detect potentially malicious instructions in state file content."""
-    return any(pattern in text for pattern in _SUSPICIOUS_PATTERNS)
+    lower = text.lower()
+    return any(pattern in lower for pattern in _SUSPICIOUS_PATTERNS)
 
 
 def build_adapter_context(project_root: Path) -> AdapterContext:
@@ -67,22 +68,19 @@ def build_adapter_context(project_root: Path) -> AdapterContext:
 
     config = load_config(vibe_dir)
 
-    # Read languages/frameworks from config (stored during init scan)
-    languages = config.languages if hasattr(config, "languages") else []
-    frameworks = config.frameworks if hasattr(config, "frameworks") else []
-
-    # Fallback: parse from architecture.md if config doesn't have them
-    if not languages:
-        arch = _read("state/architecture.md")
-        for line in arch.splitlines():
-            if line.strip().startswith("- Language:"):
-                lang = line.split(":", 1)[1].strip()
-                if lang:
-                    languages.append(lang)
-            if line.strip().startswith("- Framework:"):
-                fw = line.split(":", 1)[1].strip()
-                if fw:
-                    frameworks.append(fw)
+    # Parse languages/frameworks from architecture.md
+    languages: list[str] = []
+    frameworks: list[str] = []
+    arch = _read("state/architecture.md")
+    for line in arch.splitlines():
+        if line.strip().startswith("- Language:"):
+            lang_val = line.split(":", 1)[1].strip()
+            if lang_val:
+                languages.append(lang_val)
+        if line.strip().startswith("- Framework:"):
+            fw_val = line.split(":", 1)[1].strip()
+            if fw_val:
+                frameworks.append(fw_val)
 
     return AdapterContext(
         project_root=project_root,
@@ -120,14 +118,15 @@ class AdapterBase(ABC):
         return True
 
     def _write_file(self, path: Path, content: str) -> Path:
-        """Write content to file with integrity marker."""
+        """Write content to file with integrity marker (markdown only)."""
         import hashlib
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Add integrity marker at end of file
-        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
-        tagged = content.rstrip() + f"\n\n<!-- vibe-state-cli:integrity:{content_hash} -->\n"
-        path.write_text(tagged, encoding="utf-8", newline="\n")
+        # Add integrity marker only to markdown files (not JSON, TOML, etc.)
+        if path.suffix in (".md", ".mdc"):
+            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+            content = content.rstrip() + f"\n\n<!-- vibe-state-cli:integrity:{content_hash} -->\n"
+        path.write_text(content, encoding="utf-8", newline="\n")
         return path
 
     def _build_common_body(

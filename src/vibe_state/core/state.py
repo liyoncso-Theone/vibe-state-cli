@@ -108,12 +108,30 @@ def write_state_file(vibe_dir: Path, filename: str, content: str) -> None:
 
 
 def append_to_state_file(vibe_dir: Path, filename: str, content: str) -> None:
-    """Append content to a state file (atomic read-modify-write)."""
-    with _file_lock(vibe_dir / "state" / filename):
-        existing = read_state_file(vibe_dir, filename)
+    """Append content to a state file (atomic read-modify-write under single lock)."""
+    state_dir = ensure_state_dir(vibe_dir)
+    path = _validate_filename(state_dir, filename)
+
+    with _file_lock(path):
+        existing = ""
+        if path.exists():
+            with contextlib.suppress(UnicodeDecodeError, OSError):
+                existing = path.read_text(encoding="utf-8")
         separator = "\n" if existing and not existing.endswith("\n") else ""
         full_content = existing + separator + content
-    write_state_file(vibe_dir, filename, full_content)
+
+        # Atomic write within the same lock
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(state_dir), suffix=".tmp", prefix=f".{filename}."
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+                f.write(full_content)
+            os.replace(tmp_path, str(path))
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+            raise
 
 
 def get_file_line_count(vibe_dir: Path, filename: str) -> int:

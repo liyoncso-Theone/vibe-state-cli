@@ -47,7 +47,6 @@ def render_template(template_path: str, lang: str = "en", **context: object) -> 
     context.setdefault("languages", [])
     context.setdefault("frameworks", [])
     context.setdefault("project_name", "")
-    context.setdefault("compact_threshold", 150)
     context.setdefault("stale_task_days", 30)
 
     resolved = _resolve_template(template_path, lang)
@@ -59,7 +58,6 @@ def render_all_state_files(
     languages: list[str],
     frameworks: list[str],
     project_name: str = "",
-    compact_threshold: int = 150,
     stale_task_days: int = 30,
     lang: str = "en",
 ) -> dict[str, str]:
@@ -68,7 +66,6 @@ def render_all_state_files(
         "languages": languages,
         "frameworks": frameworks,
         "project_name": project_name,
-        "compact_threshold": compact_threshold,
         "stale_task_days": stale_task_days,
     }
 
