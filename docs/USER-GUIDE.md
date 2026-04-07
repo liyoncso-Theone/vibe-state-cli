@@ -41,12 +41,14 @@ vibe init --force             # 強制重新初始化（也可用於重開已結
 ```
 
 **自動偵測**：
+
 - 語言/框架：讀取 `pyproject.toml`、`package.json`、`Cargo.toml` 等
 - AI 工具：掃描 `.claude/`、`.cursor/`、`.windsurf/` 等目錄
 - Git：偵測 `.git/` 是否存在
 
 **生成的檔案**：
-```
+
+```text
 .vibe/
 ├── VIBE.md              # 憲法（AI 行為準則 + 工作流 SOP）
 ├── config.toml          # 設定（adapter 開關、compact 閾值等）
@@ -68,7 +70,8 @@ vibe start
 ```
 
 **輸出範例**：
-```
+
+```text
 ┌────────────── vibe start ──────────────┐
 │  Progress      Sync [2026-04-07] ...   │
 │  Git           3 uncommitted changes   │
@@ -91,7 +94,8 @@ vibe sync --close        # 結案（最終同步 + 壓縮 + 回顧報告）
 ```
 
 **C.L.E.A.R. 審查清單**（僅有實際變更時顯示）：
-```
+
+```text
 [C] Core Logic   — 核心邏輯正確嗎？邊界條件？
 [L] Layout       — 結構/命名符合 standards.md？
 [E] Evidence     — 有測試輸出或 API 回應作為證據？
@@ -126,7 +130,7 @@ vibe adapt --remove cursor --confirm       # 確認刪除（自動備份）
 
 ### 單人開發
 
-```
+```text
 每天早上：vibe start
   ↓
 工作（AI 自動 checkpoint — 標記 [x] + 更新 current.md）
@@ -140,7 +144,7 @@ vibe adapt --remove cursor --confirm       # 確認刪除（自動備份）
 
 ### 多 Agent 切換
 
-```
+```text
 Morning: Claude Code terminal
   ↓ vibe start → AI 讀取 CLAUDE.md → 看到 "Session Start" → 讀 .vibe/state/
   ↓ 工作...
@@ -171,7 +175,7 @@ vibe start   # 顯示實驗摘要：5 kept, 3 reverted
 ## 支援的 AI 工具
 
 | 工具 | Adapter 名稱 | 自動偵測標誌 |
-|------|-------------|-------------|
+| ---- | ------------ | ------------ |
 | AGENTS.md（通用標準） | `agents_md` | `AGENTS.md` 已存在 |
 | Claude Code | `claude` | `.claude/` 或 `CLAUDE.md` |
 | Google Antigravity / Gemini CLI | `antigravity` | `GEMINI.md` 或 `.gemini/` |
@@ -188,13 +192,17 @@ vibe start   # 顯示實驗摘要：5 kept, 3 reverted
 ## FAQ
 
 ### .vibe/ 應該 commit 到 git 嗎？
+
 **是的**。`.vibe/` 是專案的共享大腦，團隊成員都應該看到。但 `.vibe/backups/` 和 `.vibe/snapshots/` 已在 `.gitignore` 中排除。
 
 ### 不用 git 可以嗎？
+
 可以。`vibe init` 會自動偵測，非 git 專案的 sync 會跳過 git 操作。
 
 ### 可以同時用 Claude Code 和 Cursor 嗎？
+
 可以。`vibe adapt --add claude` + `vibe adapt --add cursor` + `vibe adapt --sync`。兩邊各自載入自己的設定檔，共享 `.vibe/state/`。
 
 ### experiments.md 是什麼？
+
 是 autoresearch 實驗的自動記錄。`vibe sync` 會偵測 git log 中帶有 `autoresearch:` 或 `[autoresearch]` 前綴的 commit，記錄為 KEPT 或 REVERTED。
