@@ -1,0 +1,33 @@
+[vibe]
+version = 1
+lang = "zh-TW"
+
+[state]
+compact_threshold = 150
+stale_task_days = 30
+
+[adapters]
+enabled = [
+    "claude",
+    "agents_md",
+]
+auto_detect = true
+
+[git]
+enabled = true
+auto_commit = false
+
+[experiments]
+commit_patterns = [
+    "autoresearch:",
+    "experiment:",
+    "[autoresearch]",
+    "[experiment]",
+    "auto-research",
+]
+revert_prefixes = [
+    "revert",
+    "reset",
+    "rollback",
+    "undo",
+]

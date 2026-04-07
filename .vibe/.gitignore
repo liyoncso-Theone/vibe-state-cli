@@ -1,0 +1,4 @@
+# vibe-state-cli internals (do not commit)
+snapshots/
+backups/
+.fingerprint
