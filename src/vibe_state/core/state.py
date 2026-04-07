@@ -37,29 +37,44 @@ def _validate_filename(state_dir: Path, filename: str) -> Path:
     return resolved
 
 
+class StateLockError(Exception):
+    """Raised when a state file lock cannot be acquired."""
+
+
 @contextmanager
-def _file_lock(lock_path: Path) -> Iterator[None]:
-    """Simple cross-platform file lock using a .lock file."""
+def _file_lock(lock_path: Path, retries: int = 3, wait: float = 0.2) -> Iterator[None]:
+    """Cross-platform file lock. Retries with backoff, then FAILS — never forces entry."""
+    import time
+
     lock_file = lock_path.with_suffix(lock_path.suffix + ".lock")
     lock_file.parent.mkdir(parents=True, exist_ok=True)
     fd = None
-    try:
-        fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        yield
-    except OSError:
-        # Lock already exists — wait briefly and retry once
-        import time
+    acquired = False
 
-        time.sleep(0.1)
+    for attempt in range(retries):
         try:
             fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            yield
+            acquired = True
+            break
         except OSError:
-            # Still locked — proceed anyway with warning (best-effort)
-            yield
+            if attempt < retries - 1:
+                logger.debug(
+                    "Lock contention on %s (attempt %d/%d), waiting %.1fs",
+                    lock_file.name, attempt + 1, retries, wait,
+                )
+                time.sleep(wait)
+                wait *= 2  # exponential backoff
+
+    if not acquired:
+        raise StateLockError(
+            f"Cannot acquire lock on {lock_path.name} after {retries} retries. "
+            f"Another process may be writing. Delete {lock_file} if stale."
+        )
+
+    try:
+        yield
     finally:
-        if fd is not None:
-            os.close(fd)
+        os.close(fd)
         with contextlib.suppress(OSError):
             lock_file.unlink(missing_ok=True)
 

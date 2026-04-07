@@ -7,14 +7,28 @@
 ```bash
 git clone https://github.com/vibe-state-cli/vibe-state-cli.git
 cd vibe-state-cli
-pip install -e ".[dev]"
+make install              # 使用 uv sync + pre-commit install
 ```
+
+需要 [uv](https://docs.astral.sh/uv/)（`pip install uv` 或 `curl -LsSf https://astral.sh/uv/install.sh | sh`）。
 
 ## 執行測試
 
 ```bash
-ruff check src/ tests/    # Lint 檢查
-pytest tests/ -v          # 測試
+make lint                 # uv run ruff check
+make test                 # uv run pytest
+make cov                  # uv run pytest --cov
+make typecheck            # uv run mypy
+make build                # uv build
+```
+
+## 依賴管理
+
+依賴透過 `uv.lock` 鎖定（已 commit 到 git）。保證每位貢獻者拿到完全相同的版本。
+
+```bash
+# 在 pyproject.toml 新增依賴後：
+make lock                 # 重新生成 uv.lock
 ```
 
 ## 專案結構

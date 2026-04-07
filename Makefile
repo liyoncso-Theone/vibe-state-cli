@@ -1,4 +1,4 @@
-.PHONY: install lint test cov clean build lock sync
+.PHONY: install lint test cov clean build lock typecheck
 
 ## Install all dependencies (runtime + dev) from lockfile — reproducible
 install:
