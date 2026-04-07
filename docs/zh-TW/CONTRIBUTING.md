@@ -33,23 +33,31 @@ make lock                 # 重新生成 uv.lock
 
 ## 專案結構
 
-```
+```text
 src/vibe_state/
-├── cli.py            # 5 個 Typer 指令
-├── config.py         # config.toml Schema（Pydantic）
-├── safety.py         # 快照、備份、dry-run
-├── core/
-│   ├── scanner.py    # 語言/框架/工具偵測
-│   ├── lifecycle.py  # 狀態機（UNINIT→READY→ACTIVE→CLOSED）
-│   ├── git_ops.py    # Git 唯讀操作 + autoresearch 偵測
-│   ├── state.py      # 原子寫入 + 檔案鎖定
-│   ├── compactor.py  # 任務歸檔 + 狀態壓縮
-│   └── templates.py  # Jinja2 渲染 + i18n
-├── adapters/         # 8 個內建 adapter
-│   ├── base.py       # AdapterBase ABC + _build_common_body()
-│   ├── registry.py   # 透過 @register_adapter 自動發現
-│   └── *.py          # 每個 adapter 一個檔案
-└── templates/        # Jinja2 模板（en + zh-TW）
+├── cli.py              # 薄入口（import commands/）
+├── config.py           # config.toml Schema（Pydantic）
+├── safety.py           # 快照、備份、dry-run
+├── commands/           # 5 個 CLI 指令（模組化）
+│   ├── _helpers.py     # 共用函式、app 定義、--verbose
+│   ├── cmd_init.py     # vibe init（掃描 + 遷移 + 生成）
+│   ├── cmd_start.py    # vibe start
+│   ├── cmd_sync.py     # vibe sync
+│   ├── cmd_status.py   # vibe status
+│   └── cmd_adapt.py    # vibe adapt
+├── core/               # 核心邏輯（不依賴 CLI 框架）
+│   ├── scanner.py      # 語言/框架/工具偵測
+│   ├── lifecycle.py    # 狀態機 + 指數退避鎖
+│   ├── git_ops.py      # Git 唯讀 + autoresearch 偵測
+│   ├── state.py        # 原子寫入 + 檔案鎖定
+│   ├── compactor.py    # AST 語義壓縮（markdown-it-py）
+│   ├── migrator.py     # 舊檔案偵測 + 規則匯入
+│   └── templates.py    # Jinja2 渲染 + i18n
+├── adapters/           # 8 個內建 adapter
+│   ├── base.py         # AdapterBase ABC + 共用邏輯
+│   ├── registry.py     # @register_adapter 自動發現
+│   └── *.py            # 每個 adapter 一個檔案
+└── templates/          # Jinja2 模板（en + zh-TW）
 ```
 
 ## 新增 Adapter

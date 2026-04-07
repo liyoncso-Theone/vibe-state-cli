@@ -33,23 +33,31 @@ make lock                 # Regenerates uv.lock
 
 ## Project Structure
 
-```
+```text
 src/vibe_state/
-├── cli.py            # 5 Typer commands
-├── config.py         # config.toml schema (Pydantic)
-├── safety.py         # Snapshots, backups, dry-run
-├── core/
-│   ├── scanner.py    # Language/framework/tool detection
-│   ├── lifecycle.py  # State machine (UNINIT→READY→ACTIVE→CLOSED)
-│   ├── git_ops.py    # Git read-only + autoresearch detection
-│   ├── state.py      # Atomic file I/O with locking
-│   ├── compactor.py  # Task archival + state compression
-│   └── templates.py  # Jinja2 rendering with i18n
-├── adapters/         # 8 built-in adapters
-│   ├── base.py       # AdapterBase ABC + _build_common_body()
-│   ├── registry.py   # Auto-discovery via @register_adapter
-│   └── *.py          # One file per adapter
-└── templates/        # Jinja2 templates (en + zh-TW)
+├── cli.py              # Thin entry point (imports commands/)
+├── config.py           # config.toml schema (Pydantic)
+├── safety.py           # Snapshots, backups, dry-run
+├── commands/           # 5 CLI commands (modular)
+│   ├── _helpers.py     # Shared utils, app definition, --verbose
+│   ├── cmd_init.py     # vibe init (scan + migrate + generate)
+│   ├── cmd_start.py    # vibe start
+│   ├── cmd_sync.py     # vibe sync
+│   ├── cmd_status.py   # vibe status
+│   └── cmd_adapt.py    # vibe adapt
+├── core/               # Core logic (no CLI dependency)
+│   ├── scanner.py      # Language/framework/tool detection
+│   ├── lifecycle.py    # State machine with exponential backoff lock
+│   ├── git_ops.py      # Git read-only + autoresearch detection
+│   ├── state.py        # Atomic file I/O with locking
+│   ├── compactor.py    # AST-based Markdown compression
+│   ├── migrator.py     # Legacy file detection + rule import
+│   └── templates.py    # Jinja2 rendering with i18n
+├── adapters/           # 8 built-in adapters
+│   ├── base.py         # AdapterBase ABC + shared logic
+│   ├── registry.py     # Auto-discovery via @register_adapter
+│   └── *.py            # One file per adapter
+└── templates/          # Jinja2 templates (en + zh-TW)
 ```
 
 ## Adding a New Adapter
