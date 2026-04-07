@@ -152,7 +152,6 @@ class AdapterBase(ABC):
                 lines.append(f"- Languages: {', '.join(ctx.languages)}")
             if ctx.frameworks:
                 lines.append(f"- Frameworks: {', '.join(ctx.frameworks)}")
-            lines.append("")
 
             # Pull standards with injection detection
             has_security = False
@@ -160,33 +159,36 @@ class AdapterBase(ABC):
                 for line in ctx.standards.splitlines():
                     stripped = line.strip()
                     if stripped.startswith("- ") and not stripped.startswith("- ("):
-                        # Block suspicious instructions from propagating
                         lower = stripped.lower()
                         if _is_suspicious_instruction(lower):
                             continue
                         lines.append(_sanitize(stripped))
                         if "hardcode" in lower or "secret" in lower:
                             has_security = True
-                lines.append("")
 
             # Only add security block if standards didn't already include it
             if not has_security:
                 lines += [
+                    "",
                     "## Security",
+                    "",
                     "- Never hardcode secrets, tokens, or passwords",
                     "- Use .env files for environment variables",
-                    "",
                 ]
 
         # Always include: session-start directive + boundaries
         lines += [
+            "",
             "## Session Start — READ THESE FILES",
+            "",
             "At the beginning of every session, read these files for project context:",
+            "",
             "- `.vibe/state/current.md` — latest progress and sync history",
             "- `.vibe/state/tasks.md` — active task checklist",
             "- `.vibe/VIBE.md` — project constitution and workflow SOP",
             "",
             "## Boundaries",
+            "",
             "- Do NOT modify `.vibe/config.toml` or `.vibe/state/.lifecycle` directly",
             "- Do NOT run destructive commands without human confirmation",
             "",
