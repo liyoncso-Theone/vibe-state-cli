@@ -1,0 +1,667 @@
+"""CLI integration: full lifecycle, init/start/sync/status/adapt all scenarios."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+from typer.testing import CliRunner
+
+from vibe_state.cli import (
+    _check_fingerprint,
+    _extract_latest_progress,
+    _extract_section_items,
+    app,
+)
+from vibe_state.config import load_config, save_config
+from vibe_state.core.lifecycle import LifecycleState, read_state
+from vibe_state.core.state import read_state_file, write_state_file
+
+runner = CliRunner()
+
+
+def _git_init(p: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=p, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=p, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=p, capture_output=True)
+
+
+# ── Full lifecycle ──
+
+
+class TestCliFullLifecycle:
+    def test_init_start_sync_close_reinit(self, tmp_path: Path) -> None:
+        """Test: init -> start -> sync -> sync --compact -> sync --close -> init --force."""
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n')
+
+        # init
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / ".vibe" / "VIBE.md").exists()
+        assert read_state(tmp_path / ".vibe") == LifecycleState.READY
+
+        # init again should fail
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 1
+
+        # start
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0, result.output
+        assert read_state(tmp_path / ".vibe") == LifecycleState.ACTIVE
+
+        # status (always available)
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0, result.output
+        assert "ACTIVE" in result.output
+
+        # sync (no commits yet)
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 0, result.output
+        assert "No changes" in result.output or "Synced" in result.output
+
+        # sync --compact
+        result = runner.invoke(app, ["sync", "--compact"])
+        assert result.exit_code == 0, result.output
+        assert "Compacted" in result.output
+
+        # sync --close
+        result = runner.invoke(app, ["sync", "--close"])
+        assert result.exit_code == 0, result.output
+        assert read_state(tmp_path / ".vibe") == LifecycleState.CLOSED
+        assert (tmp_path / ".vibe" / "state" / "retrospective.md").exists()
+
+        # sync after close should fail
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 1
+
+        # init --force reopens
+        result = runner.invoke(app, ["init", "--force"])
+        assert result.exit_code == 0, result.output
+        assert read_state(tmp_path / ".vibe") == LifecycleState.READY
+
+        # start again should work
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0
+
+        # sync should work again
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 0
+        monkeypatch.undo()
+
+    def test_only_five_commands(self) -> None:
+        """Verify CLI has exactly 5 commands."""
+        commands = [cmd for cmd in app.registered_commands]
+        command_names = {cmd.name or cmd.callback.__name__ for cmd in commands}
+        assert command_names == {"init", "start", "sync", "status", "adapt"}
+
+
+# ── Init scenarios ──
+
+
+class TestCliInit:
+    def test_root_directory_blocked(self) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir("/")
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 1
+        mp.undo()
+
+    def test_init_blocked_in_home(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(Path.home())
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 1
+        assert "HOME or root" in result.output
+        monkeypatch.undo()
+
+    def test_force_creates_backup(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        vibe_md = tmp_path / ".vibe" / "VIBE.md"
+        vibe_md.write_text("# Custom VIBE\n")
+        result = runner.invoke(app, ["init", "--force"])
+        assert result.exit_code == 0
+        assert "Backed up" in result.output
+        monkeypatch.undo()
+
+    def test_init_creates_internal_gitignore(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        gi = tmp_path / ".vibe" / ".gitignore"
+        assert gi.exists()
+        content = gi.read_text(encoding="utf-8")
+        assert "snapshots/" in content
+        assert "backups/" in content
+        assert ".fingerprint" in content
+        monkeypatch.undo()
+
+    def test_init_zh_tw(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        result = runner.invoke(app, ["init", "--lang", "zh-TW"])
+        assert result.exit_code == 0
+        vibe_md = (tmp_path / ".vibe" / "VIBE.md").read_text(encoding="utf-8")
+        assert "專案憲法" in vibe_md
+        monkeypatch.undo()
+
+    def test_init_invalid_lang_fallback(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        result = runner.invoke(app, ["init", "--lang", "xx"])
+        assert "not a supported language" in result.output
+        assert result.exit_code == 0  # Falls back to en
+        monkeypatch.undo()
+
+
+# ── Status scenarios ──
+
+
+class TestCliStatus:
+    def test_status_without_init(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 1
+        assert "vibe init" in result.output
+        monkeypatch.undo()
+
+
+# ── Start scenarios ──
+
+
+class TestCliStart:
+    def test_start_auto_compact_triggered(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        big = "# Tasks\n" + "".join(f"- [ ] Task {i}\n" for i in range(200))
+        write_state_file(tmp_path / ".vibe", "tasks.md", big)
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0
+        assert "Auto-compacting" in result.output
+        mp.undo()
+
+    def test_start_with_experiments(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        write_state_file(
+            tmp_path / ".vibe", "experiments.md",
+            "# Exp\n- [KEPT] abc\n- [REVERTED] def\n",
+        )
+        result = runner.invoke(app, ["start"])
+        assert "1 kept" in result.output
+        mp.undo()
+
+    def test_start_with_open_issues(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        write_state_file(
+            tmp_path / ".vibe", "current.md",
+            "# Current\n## Open Issues\n- Bug #42\n- Bug #99\n",
+        )
+        result = runner.invoke(app, ["start"])
+        assert "Bug" in result.output
+        mp.undo()
+
+    def test_start_with_pending_tasks(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        write_state_file(
+            tmp_path / ".vibe", "tasks.md",
+            "# Tasks\n- [ ] Build auth\n- [ ] Write tests\n",
+        )
+        result = runner.invoke(app, ["start"])
+        assert "Build auth" in result.output
+        mp.undo()
+
+    def test_start_no_git(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["start"])
+        assert "disabled" in result.output
+        mp.undo()
+
+    def test_start_warns_on_foreign_vibe(self, tmp_path: Path) -> None:
+        """vibe start warns when .vibe/ was not generated locally."""
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        vibe = tmp_path / ".vibe"
+        (vibe / "state").mkdir(parents=True)
+        (vibe / "VIBE.md").write_text("# VIBE\n")
+        (vibe / "config.toml").write_text('[vibe]\nversion = 1\n')
+        (vibe / "state" / ".lifecycle").write_text("READY\n")
+        result = runner.invoke(app, ["start"])
+        assert "not generated on this machine" in result.output
+        monkeypatch.undo()
+
+    def test_start_no_warning_after_init(self, tmp_path: Path) -> None:
+        """vibe start does NOT warn when .vibe/ was generated by init."""
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["start"])
+        assert "not generated on this machine" not in result.output
+        monkeypatch.undo()
+
+    def test_start_git_not_in_path(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        with patch("vibe_state.core.git_ops.git_available", return_value=False):
+            result = runner.invoke(app, ["start"])
+        assert "git not found" in result.output
+        mp.undo()
+
+
+# ── Sync scenarios ──
+
+
+class TestCliSync:
+    def test_sync_non_git(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        result = runner.invoke(app, ["sync"])
+        assert "No git" in result.output or "No changes" in result.output
+        mp.undo()
+
+    def test_sync_many_commits(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "f.txt").write_text("init")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"],
+            cwd=tmp_path, capture_output=True,
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        for i in range(25):
+            (tmp_path / "f.txt").write_text(f"v{i}")
+            subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", f"feat: change {i}"],
+                cwd=tmp_path, capture_output=True,
+            )
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 0
+        current = read_state_file(tmp_path / ".vibe", "current.md")
+        assert "... and" in current  # Truncated at 20
+        mp.undo()
+
+    def test_sync_includes_diff_stat(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "app.py").write_text("x = 1\n")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"],
+            cwd=tmp_path, capture_output=True,
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        (tmp_path / "app.py").write_text("x = 2\ny = 3\n")
+        (tmp_path / "b.py").write_text("b = 1\n")
+        subprocess.run(["git", "add", "b.py"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feat: add b"],
+            cwd=tmp_path, capture_output=True,
+        )
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 0
+        current = read_state_file(tmp_path / ".vibe", "current.md")
+        assert "Sync [" in current
+        mp.undo()
+
+    def test_sync_records_experiments(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "f.txt").write_text("x")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"],
+            cwd=tmp_path, capture_output=True,
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        (tmp_path / "exp.txt").write_text("1")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "autoresearch: try A"],
+            cwd=tmp_path, capture_output=True,
+        )
+        (tmp_path / "exp.txt").write_text("2")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "autoresearch: revert B"],
+            cwd=tmp_path, capture_output=True,
+        )
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 0
+        exp = read_state_file(tmp_path / ".vibe", "experiments.md")
+        assert "[KEPT]" in exp or "[REVERTED]" in exp
+        mp.undo()
+
+
+# ── Adapt scenarios ──
+
+
+class TestCliAdapt:
+    def test_adapt_list(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0
+        result = runner.invoke(app, ["adapt", "--list"])
+        assert result.exit_code == 0
+        assert "agents_md" in result.output
+        result = runner.invoke(app, ["adapt", "--add", "claude"])
+        assert result.exit_code == 0
+        result = runner.invoke(app, ["adapt", "--list"])
+        assert "claude" in result.output
+        result = runner.invoke(app, ["adapt", "--add", "fake_tool"])
+        assert result.exit_code == 1
+        monkeypatch.undo()
+
+    def test_add_duplicate(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["adapt", "--add", "agents_md"])
+        assert "already enabled" in result.output
+        mp.undo()
+
+    def test_add_invalid(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["adapt", "--add", "nonexistent"])
+        assert result.exit_code == 1
+        assert "Unknown adapter" in result.output
+        monkeypatch.undo()
+
+    def test_remove_not_enabled(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["adapt", "--remove", "cursor"])
+        assert "not enabled" in result.output
+        mp.undo()
+
+    def test_remove_without_confirm_shows_warning(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["adapt", "--add", "claude"])
+        runner.invoke(app, ["adapt", "--sync", "--confirm"])
+        result = runner.invoke(app, ["adapt", "--remove", "claude"])
+        assert "--confirm" in result.output
+        mp.undo()
+
+    def test_remove_warns_user_modified(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["adapt", "--add", "claude"])
+        runner.invoke(app, ["adapt", "--sync", "--confirm"])
+        (tmp_path / "CLAUDE.md").write_text("# Custom\n")
+        result = runner.invoke(app, ["adapt", "--remove", "claude"])
+        assert "manually edited" in result.output
+        mp.undo()
+
+    def test_remove_dry_run(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["adapt", "--add", "claude"])
+        runner.invoke(app, ["adapt", "--sync", "--confirm"])
+        result = runner.invoke(app, ["adapt", "--remove", "claude", "--dry-run"])
+        assert "dry-run" in result.output
+        assert (tmp_path / "CLAUDE.md").exists()
+        monkeypatch.undo()
+
+    def test_remove_confirm(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["adapt", "--add", "claude"])
+        runner.invoke(app, ["adapt", "--sync", "--confirm"])
+        result = runner.invoke(app, ["adapt", "--remove", "claude", "--confirm"])
+        assert result.exit_code == 0
+        backup_dir = tmp_path / ".vibe" / "backups" / "claude"
+        assert backup_dir.exists()
+        monkeypatch.undo()
+
+    def test_remove_unknown_in_config(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        config = load_config(tmp_path / ".vibe")
+        config.adapters.enabled.append("fake_adapter")
+        save_config(tmp_path / ".vibe", config)
+        result = runner.invoke(app, ["adapt", "--remove", "fake_adapter", "--confirm"])
+        assert "Unknown adapter" in result.output
+        mp.undo()
+
+    def test_sync_regenerates(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["adapt", "--add", "cursor"])
+        result = runner.invoke(app, ["adapt", "--sync", "--confirm"])
+        assert "synced" in result.output
+        assert (tmp_path / ".cursor" / "rules" / "vibe-standards.mdc").exists()
+        monkeypatch.undo()
+
+    def test_sync_with_unknown_adapter(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        config = load_config(tmp_path / ".vibe")
+        config.adapters.enabled.append("nonexistent")
+        save_config(tmp_path / ".vibe", config)
+        result = runner.invoke(app, ["adapt", "--sync", "--confirm"])
+        assert "Unknown adapter" in result.output
+        mp.undo()
+
+    def test_sync_warns_on_user_modified_files(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["adapt", "--add", "claude"])
+        runner.invoke(app, ["adapt", "--sync", "--confirm"])
+        (tmp_path / "CLAUDE.md").write_text("# My custom CLAUDE.md\n")
+        result = runner.invoke(app, ["adapt", "--sync"])
+        assert "modified by user" in result.output
+        mp.undo()
+
+    def test_no_flag_shows_help(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["adapt"])
+        assert "--add" in result.output or "--remove" in result.output or "--list" in result.output
+        mp.undo()
+
+
+# ── Integrity hash ──
+
+
+class TestCliIntegrity:
+    def test_adapter_files_have_integrity_marker(self, tmp_path: Path) -> None:
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        agents_md = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "<!-- vibe-state-cli:integrity:" in agents_md
+        monkeypatch.undo()
+
+    def test_json_files_no_integrity_marker(self, tmp_path: Path) -> None:
+        """JSON files should NOT have HTML integrity marker."""
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".claude").mkdir()
+        runner.invoke(app, ["init"])
+        settings = tmp_path / ".claude" / "settings.json"
+        if settings.exists():
+            import json
+
+            content = settings.read_text(encoding="utf-8")
+            assert "<!-- vibe-state-cli" not in content
+            json.loads(content)  # Should not raise
+        monkeypatch.undo()
+
+
+# ── Fingerprint ──
+
+
+class TestCliFingerprint:
+    def test_check_fingerprint_empty_token(self, tmp_path: Path) -> None:
+        vibe = tmp_path / ".vibe"
+        vibe.mkdir()
+        (vibe / ".fingerprint").write_text("vibe-state-cli:")
+        assert _check_fingerprint(vibe) is False
+
+    def test_check_fingerprint_no_file(self, tmp_path: Path) -> None:
+        vibe = tmp_path / ".vibe"
+        vibe.mkdir()
+        assert _check_fingerprint(vibe) is False
+
+    def test_known_file_missing(self, tmp_path: Path) -> None:
+        from vibe_state.cli import _read_known_fingerprints
+
+        marker = tmp_path / ".vibe-fingerprints"
+        marker.mkdir()
+        result = _read_known_fingerprints(marker)
+        assert result == ""
+
+
+# ── Extract progress ──
+
+
+class TestCliExtractProgress:
+    def test_finds_last_sync_block(self) -> None:
+        content = (
+            "# Current\n## Progress\nOld stuff\n"
+            "## Sync [2026-04-07 10:00]\nCommits: 3 since last sync\n"
+            "## Sync [2026-04-07 14:00]\nCommits: 5 since last sync\n"
+        )
+        result = _extract_latest_progress(content)
+        assert "14:00" in result
+        assert "5" in result
+
+    def test_finds_final_sync(self) -> None:
+        content = "# Current\n## Final Sync [2026-04-07]\nDone\n"
+        result = _extract_latest_progress(content)
+        assert "Final Sync" in result
+
+    def test_sync_header_only(self) -> None:
+        content = "# Current\n## Sync [2026-04-07]\n```\ncode\n```\n"
+        result = _extract_latest_progress(content)
+        assert "Sync [2026-04-07]" in result
+
+    def test_fallback_to_progress_section(self) -> None:
+        content = "# Current\n## Progress Summary\nProject is 50% done\n"
+        result = _extract_latest_progress(content)
+        assert "50%" in result
+
+    def test_empty_returns_default(self) -> None:
+        assert "no progress" in _extract_latest_progress("")
+
+    def test_no_matching_section(self) -> None:
+        content = "# Current\nJust some text\n"
+        result = _extract_latest_progress(content)
+        assert "no progress" in result
+
+    def test_returns_header_when_only_code_follows(self) -> None:
+        content = "## Sync [2026-04-08]\n```\n```\n```\n```\n"
+        result = _extract_latest_progress(content)
+        assert result == "## Sync [2026-04-08]"
+
+    def test_sync_header_followed_only_by_code_blocks(self) -> None:
+        content = "# Current\n## Sync [2026-04-07]\n```\ncommit info\n```\n"
+        result = _extract_latest_progress(content)
+        assert "Sync [2026-04-07]" in result
+
+
+# ── Extract section items ──
+
+
+class TestCliExtractSectionItems:
+    def test_extracts_items(self) -> None:
+        content = "## Open Issues\n- Bug #1\n- Bug #2\n## Other\n"
+        items = _extract_section_items(content, "Open Issues")
+        assert items == ["- Bug #1", "- Bug #2"]
+
+    def test_skips_none_marker(self) -> None:
+        content = "## Open Issues\n- (none)\n"
+        items = _extract_section_items(content, "Open Issues")
+        assert items == []
+
+    def test_stops_at_next_section(self) -> None:
+        content = "## Open Issues\n- Bug\n## Tasks\n- Task\n"
+        items = _extract_section_items(content, "Open Issues")
+        assert len(items) == 1
+
+    def test_missing_section(self) -> None:
+        items = _extract_section_items("# Nothing here\n", "Open Issues")
+        assert items == []
+
+
+class TestCliVerboseMode:
+    def test_verbose_flag_accepted(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        result = runner.invoke(app, ["--verbose", "init"])
+        assert result.exit_code == 0
+        mp.undo()
+
+    def test_verbose_short_flag(self, tmp_path: Path) -> None:
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        result = runner.invoke(app, ["-v", "init"])
+        assert result.exit_code == 0
+        mp.undo()
