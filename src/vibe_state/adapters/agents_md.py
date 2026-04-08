@@ -20,15 +20,14 @@ class AgentsMdAdapter(AdapterBase):
 
     def emit(self, ctx: AdapterContext) -> list[Path]:
         if "AGENTS.md" in ctx.user_owned_files:
-            return []  # User has their own, don't overwrite
-
+            return []
         lines = [
             f"# AGENTS.md — {ctx.project_name}",
             "",
             "## Project",
             "",
         ]
-        lines += self._build_common_body(ctx)
+        lines += self._build_common_body(ctx, mode="full")
         content = "\n".join(lines)
         if not self.validate(content):
             self._warn_validation("AGENTS.md (>32KiB)")

@@ -13,6 +13,7 @@ from vibe_state.commands._helpers import (
     extract_latest_progress,
     extract_section_items,
     get_vibe_dir,
+    refresh_adapters,
     require_lifecycle,
 )
 
@@ -87,6 +88,9 @@ def start() -> None:
             exp_summary = f"{kept} kept, {reverted} reverted"
 
     write_state(vibe_dir, next_state)
+
+    # Refresh adapter files with latest state summary
+    refresh_adapters(vibe_dir)
 
     # Output Rich summary
     table = Table(show_header=False, box=None, padding=(0, 2))

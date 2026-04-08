@@ -9,4 +9,4 @@ Run in terminal:
 vibe init
 ```
 
-Report the result to the user.
+Report the result.

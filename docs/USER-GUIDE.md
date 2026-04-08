@@ -50,7 +50,6 @@ vibe init --force             # 強制重新初始化（也可用於重開已結
 
 ```text
 .vibe/
-├── VIBE.md              # 憲法（AI 行為準則 + 工作流 SOP）
 ├── config.toml          # 設定（adapter 開關、compact 閾值等）
 └── state/
     ├── current.md       # 當前進度
@@ -60,6 +59,8 @@ vibe init --force             # 強制重新初始化（也可用於重開已結
     ├── experiments.md   # autoresearch 實驗紀錄
     └── archive.md       # 冷藏庫
 ```
+
+> 行為規則（Workflow、Boundaries、Vibe Commands）直接寫在 AGENTS.md 中，不另設 VIBE.md。
 
 ### 2. `vibe start`
 
@@ -271,7 +272,7 @@ revert_prefixes = ["revert", "reset", "rollback", "undo"]
 
 ### .vibe/ 應該 commit 到 git 嗎？
 
-**是的**。`.vibe/` 是專案的共享大腦，團隊成員都應該看到。但 `.vibe/backups/` 和 `.vibe/snapshots/` 已在 `.gitignore` 中排除。
+**是的**。`.vibe/` 是專案的共享大腦，團隊成員都應該看到。`.vibe/backups/` 已在 `.gitignore` 中排除。
 
 ### 不用 git 可以嗎？
 

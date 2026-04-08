@@ -18,8 +18,8 @@ class RooAdapter(AdapterBase):
 
     def emit(self, ctx: AdapterContext) -> list[Path]:
         lines = [f"# Vibe Standards — {ctx.project_name}", ""]
-        slim = "agents_md" in ctx.enabled_adapters
-        lines += self._build_common_body(ctx, slim=slim)
+        # Roo Code — use compact mode
+        lines += self._build_common_body(ctx, mode="compact")
         return [self._write_file(
             ctx.project_root / ".roo" / "rules" / "01-vibe-standards.md",
             "\n".join(lines),

@@ -1,4 +1,4 @@
-"""Claude Code adapter — CLAUDE.md + .claude/rules/*.md."""
+"""Claude Code adapter — CLAUDE.md + .claude/rules/*.md + skills."""
 
 from __future__ import annotations
 
@@ -20,22 +20,21 @@ class ClaudeAdapter(AdapterBase):
     def emit(self, ctx: AdapterContext) -> list[Path]:
         files: list[Path] = []
 
-        # CLAUDE.md — skip if user already has one at root (migration preserves theirs)
+        # CLAUDE.md — skip if user's original is preserved
         if "CLAUDE.md" not in ctx.user_owned_files:
             lines = [f"# CLAUDE.md — {ctx.project_name}", ""]
             if "agents_md" in ctx.enabled_adapters:
                 lines += ["@AGENTS.md", "", "## Claude-Specific", ""]
             else:
                 lines += ["## Project", ""]
-                lines += self._build_common_body(ctx)
-
+                lines += self._build_common_body(ctx, mode="full")
             lines += [""]
             files.append(self._write_file(ctx.project_root / "CLAUDE.md", "\n".join(lines)))
 
-        # .claude/rules/vibe-standards.md (slim when AGENTS.md also enabled)
-        slim = "agents_md" in ctx.enabled_adapters
+        # .claude/rules/vibe-standards.md (slim when AGENTS.md co-enabled)
+        mode = "slim" if "agents_md" in ctx.enabled_adapters else "full"
         rules = ["---", 'paths: ["**/*"]', "---", "", "# Vibe Standards", ""]
-        rules += self._build_common_body(ctx, slim=slim)
+        rules += self._build_common_body(ctx, mode=mode)
         files.append(self._write_file(
             ctx.project_root / ".claude" / "rules" / "vibe-standards.md",
             "\n".join(rules),
@@ -78,8 +77,7 @@ class ClaudeAdapter(AdapterBase):
             skill_dir.mkdir(parents=True, exist_ok=True)
             content = f"---\nname: {skill_name}\ndescription: {desc}\n---\n\n{body}\n"
             skill_path = skill_dir / "SKILL.md"
-            skill_path.write_text(content, encoding="utf-8", newline="\n")
-            files.append(skill_path)
+            files.append(self._write_file(skill_path, content))
 
         return files
 

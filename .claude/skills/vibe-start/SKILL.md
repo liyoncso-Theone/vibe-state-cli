@@ -9,8 +9,4 @@ Run in terminal:
 vibe start
 ```
 
-Then read these files for full context:
-
-- `.vibe/state/current.md`
-- `.vibe/state/tasks.md`
-- `.vibe/VIBE.md`
+Then read `.vibe/state/current.md` and `.vibe/state/tasks.md` for full context.

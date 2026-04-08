@@ -25,11 +25,12 @@ env/
 .DS_Store
 Thumbs.db
 
-# Testing
+# Testing / Linting
 .pytest_cache/
 .coverage
 htmlcov/
 .mypy_cache/
+.ruff_cache/
 
 # Environment
 .env
@@ -40,9 +41,8 @@ htmlcov/
 *.tar.gz
 
 # vibe-state-cli development
-# Keep .vibe/ tracked for dogfooding, but ignore backups/snapshots
+# Keep .vibe/ tracked for dogfooding, but ignore backups
 .vibe/backups/
-.vibe/snapshots/
 
 # Internal docs (dev-only, not published)
 docs/internal/

@@ -68,47 +68,46 @@ def require_lifecycle(vibe_dir: Path, command: str) -> LifecycleState:
         raise typer.Exit(1) from None
 
 
-def extract_latest_progress(content: str) -> str:
-    """Extract the most recent Sync block or progress summary from current.md."""
-    lines = content.splitlines()
-    for i in range(len(lines) - 1, -1, -1):
-        if lines[i].startswith("## Sync") or lines[i].startswith("## Final Sync"):
-            header = lines[i].strip()
-            for j in range(i + 1, min(i + 5, len(lines))):
-                if lines[j].strip() and not lines[j].startswith("```"):
-                    return f"{header} — {lines[j].strip()}"
-            return header
-    in_progress = False
-    for line in lines:
-        if "Progress" in line and line.startswith("#"):
-            in_progress = True
-            continue
-        if in_progress and line.strip() and not line.startswith("#"):
-            return line.strip()
-    return "(no progress recorded yet)"
-
-
-def extract_section_items(content: str, section_name: str) -> list[str]:
-    """Extract bullet items under a specific ## section."""
-    lines = content.splitlines()
-    in_section = False
-    items: list[str] = []
-    for line in lines:
-        if line.startswith("## ") and section_name in line:
-            in_section = True
-            continue
-        if in_section and line.startswith("## "):
-            break
-        if in_section and line.strip().startswith("- "):
-            item = line.strip()
-            if item != "- (none)":
-                items.append(item)
-    return items
+# Re-exported from core/summary.py for backward compatibility
+from vibe_state.core.summary import extract_latest_progress as extract_latest_progress
+from vibe_state.core.summary import extract_section_items as extract_section_items
 
 
 def sanitize_name(name: str) -> str:
     """Sanitize a project/adapter name: strip newlines, #, and control chars."""
     return "".join(c for c in name if c.isprintable() and c not in "\n\r#")
+
+
+def safe_load_config(vibe_dir: Path) -> "VibeConfig":  # noqa: F821
+    """Load config with CLI-friendly error handling."""
+    from vibe_state.config import ConfigParseError, VibeConfig, load_config
+
+    try:
+        return load_config(vibe_dir)
+    except ConfigParseError as e:
+        console.print(f"[bold red]Error:[/] {e}")
+        raise typer.Exit(1) from None
+
+
+def refresh_adapters(vibe_dir: Path) -> int:
+    """Refresh all enabled adapter config files with current state summary.
+
+    Returns the number of files refreshed.
+    """
+    from vibe_state.adapters.base import build_adapter_context
+    from vibe_state.adapters.registry import get_adapter
+
+    config = safe_load_config(vibe_dir)
+    project_root = vibe_dir.parent
+    ctx = build_adapter_context(project_root)
+
+    total = 0
+    for adapter_name in config.adapters.enabled:
+        adapter = get_adapter(adapter_name)
+        if adapter:
+            emitted = adapter.emit(ctx)
+            total += len(emitted)
+    return total
 
 
 def check_dangerous_directory(cwd: Path | None = None) -> None:

@@ -100,21 +100,9 @@ def write_sync_cursor(vibe_dir: Path, head_hash: str) -> None:
 
 # ── Autoresearch commit detection ──
 
-# Default patterns (used when no config is available)
-DEFAULT_EXPERIMENT_PATTERNS = [
-    "autoresearch:",
-    "experiment:",
-    "[autoresearch]",
-    "[experiment]",
-    "auto-research",
-]
-
-DEFAULT_REVERT_PREFIXES = [
-    "revert",
-    "reset",
-    "rollback",
-    "undo",
-]
+# Re-export from constants (single source of truth)
+from vibe_state.core.constants import DEFAULT_EXPERIMENT_PATTERNS as DEFAULT_EXPERIMENT_PATTERNS
+from vibe_state.core.constants import DEFAULT_REVERT_PREFIXES as DEFAULT_REVERT_PREFIXES
 
 
 @dataclass

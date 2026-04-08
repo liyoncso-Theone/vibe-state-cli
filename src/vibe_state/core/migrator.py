@@ -30,6 +30,8 @@ class MigrationResult:
     found_files: list[Path] = field(default_factory=list)
     extracted_rules: list[str] = field(default_factory=list)
     total_lines_imported: int = 0
+    has_unstructured_content: bool = False
+    files_without_rules: list[Path] = field(default_factory=list)  # Per-file tracking
 
 
 def scan_legacy_files(project_root: Path) -> MigrationResult:
@@ -54,6 +56,10 @@ def scan_legacy_files(project_root: Path) -> MigrationResult:
                     logger.debug(
                         "Extracted %d rules from %s", len(rules), rel_path
                     )
+                else:
+                    result.files_without_rules.append(full_path)
+                    if len(content.strip()) > 50:
+                        result.has_unstructured_content = True
                 break  # Only first match per label
 
     # Also check .cursor/rules/*.mdc for hand-written rules
@@ -112,12 +118,23 @@ def _extract_rules(content: str) -> list[str]:
 
 
 def build_imported_standards(rules: list[str]) -> str:
-    """Build a standards section from imported rules."""
+    """Build a review section from imported legacy rules.
+
+    Rules are placed in a 'Needs Review' section with instructions
+    for the AI to help the user clean them up on first session.
+    """
     if not rules:
         return ""
     lines = [
         "",
-        "## Imported from existing config",
+        "## Imported — NEEDS REVIEW",
+        "",
+        "The following rules were extracted from legacy config files.",
+        "On your first session, help the human:",
+        "1. Remove duplicates and outdated rules",
+        "2. Merge related rules into concise statements",
+        "3. Move finalized rules to the section above",
+        "4. Delete this section when done",
         "",
     ]
     lines.extend(rules)

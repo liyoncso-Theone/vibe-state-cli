@@ -19,7 +19,8 @@ class AdapterContext:
     frameworks: list[str] = field(default_factory=list)
     project_name: str = ""
     enabled_adapters: list[str] = field(default_factory=list)
-    user_owned_files: list[str] = field(default_factory=list)  # Files not to overwrite
+    user_owned_files: list[str] = field(default_factory=list)
+    state_summary: str = ""  # Compact digest injected into adapter output
 
 
 def _sanitize(value: str) -> str:
@@ -36,8 +37,10 @@ def build_adapter_context(project_root: Path) -> AdapterContext:
         return p.read_text(encoding="utf-8") if p.exists() else ""
 
     from vibe_state.config import load_config
+    from vibe_state.core.summary import build_state_summary
 
     config = load_config(vibe_dir)
+    summary = build_state_summary(vibe_dir)
 
     # Parse languages/frameworks from architecture.md
     languages: list[str] = []
@@ -62,6 +65,7 @@ def build_adapter_context(project_root: Path) -> AdapterContext:
         frameworks=[_sanitize(fw) for fw in frameworks],
         project_name=_sanitize(project_root.name),
         enabled_adapters=config.adapters.enabled,
+        state_summary=summary,
     )
 
 
@@ -88,73 +92,116 @@ class AdapterBase(ABC):
         return True
 
     def _write_file(self, path: Path, content: str) -> Path:
-        """Write content to file with managed marker (markdown only)."""
+        """Write content to file with managed marker. Skip if unchanged.
+
+        Uses retry to handle IDE/antivirus file locks on Windows.
+        """
+        import time
+
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Add marker only to markdown files (not JSON, TOML, etc.)
         if path.suffix in (".md", ".mdc"):
             content = content.rstrip() + "\n\n<!-- vibe-state-cli:managed -->\n"
-        path.write_text(content, encoding="utf-8", newline="\n")
-        return path
+        # Skip write if content is identical (avoid unnecessary git diffs)
+        if path.exists():
+            try:
+                if path.read_text(encoding="utf-8") == content:
+                    return path
+            except (OSError, UnicodeDecodeError):
+                pass
+        # Retry on PermissionError (IDE or antivirus may hold the file)
+        for attempt in range(3):
+            try:
+                path.write_text(content, encoding="utf-8", newline="\n")
+                return path
+            except PermissionError:
+                if attempt < 2:
+                    time.sleep(0.1 * (attempt + 1))
+                else:
+                    raise
+        return path  # pragma: no cover
+
+    # Max lines of standards to inline in compact mode
+    _MAX_INLINE_STANDARDS = 10
 
     def _build_common_body(
-        self, ctx: AdapterContext, *, slim: bool = False
+        self, ctx: AdapterContext, *, mode: str = "full"
     ) -> list[str]:
-        """Build the common project info + standards + security block.
+        """Build adapter body content.
 
-        Args:
-            slim: If True, emit only the session-start directive (for when
-                  AGENTS.md is also enabled and already carries the full body).
+        Modes:
+            full    — AGENTS.md: complete Session Start + Workflow + Boundaries + Commands
+            slim    — Tier 1 with AGENTS.md: one-line pointer
+            compact — Tier 2: inline standards + compact rules, no "read files" instruction
         """
         lines: list[str] = []
 
-        if slim:
-            # Truly slim: just point to AGENTS.md — everything is there
+        # State summary always injected first (all modes)
+        if ctx.state_summary:
+            lines += ctx.state_summary.splitlines() + [""]
+
+        if mode == "slim":
             lines += [
                 "See AGENTS.md for all project standards, workflow, and rules.",
                 "",
             ]
             return lines
 
-        # Full mode: project info + standards + security + workflow + boundaries + commands
-        if ctx.languages:
-            lines.append(f"- Languages: {', '.join(ctx.languages)}")
-        if ctx.frameworks:
-            lines.append(f"- Frameworks: {', '.join(ctx.frameworks)}")
+        if mode == "compact":
+            # Tier 2: inline standards + compact rules — no file-read instructions
+            if ctx.standards:
+                # Extract complete rule blocks (- line + continuation lines)
+                std_lines: list[str] = []
+                rule_count = 0
+                for raw_line in ctx.standards.splitlines():
+                    stripped = raw_line.strip()
+                    if stripped.startswith("- ") and stripped != "- (none)":
+                        if rule_count >= self._MAX_INLINE_STANDARDS:
+                            break
+                        std_lines.append(stripped)
+                        rule_count += 1
+                    elif std_lines and (raw_line.startswith("  ") or raw_line.startswith("\t")):
+                        # Continuation line (indented under a bullet)
+                        std_lines.append(raw_line.rstrip())
+                    # Skip non-bullet, non-continuation lines (headers, blanks)
+                if std_lines:
+                    lines += ["## Standards", ""]
+                    lines += std_lines
+                    lines += [""]
 
-        # Pull standards
-        has_security = False
-        if ctx.standards:
-            for line in ctx.standards.splitlines():
-                stripped = line.strip()
-                if stripped.startswith("- ") and not stripped.startswith("- ("):
-                    lines.append(stripped)
-                    lower = stripped.lower()
-                    if "hardcode" in lower or "secret" in lower:
-                        has_security = True
-
-        # Only add security block if standards didn't already include it
-        if not has_security:
             lines += [
+                "## Workflow",
                 "",
-                "## Security",
+                "Checkpoint: mark `[x]` in `state/tasks.md`, append progress"
+                " to `state/current.md` (best-effort, git is ground truth).",
+                "Reality-First: git > memory. Do NOT invent tasks.",
                 "",
-                "- Never hardcode secrets, tokens, or passwords",
-                "- Use .env files for environment variables",
+                "## Boundaries",
+                "",
+                "- Do NOT modify `.vibe/config.toml` or `.vibe/state/.lifecycle`",
+                "- Do NOT run destructive commands without human confirmation",
+                "",
+                "## Vibe Commands (run in terminal, not code)",
+                "",
+                "`vibe init` | `vibe start` | `vibe sync` | `vibe status` | `vibe adapt`",
+                "",
             ]
+            return lines
 
+        # mode == "full" — AGENTS.md: complete version
         lines += [
-            "",
             "## Session Start — READ THESE FILES",
             "",
             "At the beginning of every session, read these files for project context:",
             "",
             "- `.vibe/state/current.md` — latest progress and sync history",
             "- `.vibe/state/tasks.md` — active task checklist",
+            "- `.vibe/state/standards.md` — coding conventions and project rules",
             "",
             "## Workflow",
             "",
             "**Checkpoint**: After each task, mark `[x]` in `state/tasks.md`"
-            " and append one-line progress to `state/current.md`.",
+            " and append one-line progress to `state/current.md`."
+            " (Best-effort — `vibe sync` captures git history as ground truth.)",
             "**Reality-First**: When memory conflicts with git, trust git.",
             "**Empty State**: If `state/current.md` or `state/tasks.md` is empty,"
             " ask the human for context — do not invent tasks.",

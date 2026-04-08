@@ -6,16 +6,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [0.3.0] — 2026-04-08
 
 ### Added
 
-- **Vibe Commands section**: All adapter output now includes a "Vibe Commands" block that instructs AI tools to execute `vibe init/start/sync/status/adapt` as terminal commands — works across all AI tools without plugins
-- **Claude Code Agent Skills**: Claude adapter auto-generates `.claude/skills/vibe-*/SKILL.md` for native slash commands (`/vibe-init`, `/vibe-sync`, etc.) following the [Agent Skills open standard](https://agentskills.io/)
+- **Three-mode adapter output**: `full` (AGENTS.md), `slim` (Claude/Gemini with @import), `compact` (Cursor/Windsurf/Cline/Roo/Copilot — inline standards, no file-read instructions)
+- **Cross-tool state sync**: `vibe sync` and `vibe start` inject compressed state summary into ALL adapter config files. Switch tools → AI sees latest progress
+- **Claude Code Agent Skills**: 5 slash commands (`/vibe-init` through `/vibe-adapt`) following [Agent Skills open standard](https://agentskills.io/)
+- **Vibe Commands in every adapter**: All tools instructed to execute `vibe` CLI commands in terminal
+- **Symlink + NTFS Junction defense**: `_validate_filename` blocks symlink/junction traversal in state directory
+- **Advisory lock**: `append_to_state_file` uses cross-platform advisory lock (fcntl/msvcrt) for CI concurrency safety
+- **Windows retry**: `_atomic_write` retries on `PermissionError` (antivirus lock scenario)
+- **Two-phase migration**: copy all → verify → unlink. Partial failure preserves originals
+- **Zero-rules warning**: When legacy files have content but no extractable bullet rules, warn and preserve originals
+- **`constants.py`**: Single source of truth for experiment patterns (eliminates lazy imports)
+- **`ConfigParseError`**: Core layer raises exception, CLI layer catches and exits (library code no longer calls `SystemExit`)
+
+### Changed
+
+- **VIBE.md eliminated**: Workflow rules merged into AGENTS.md. One less file, one less token hop
+- **Bootstrap-not-embed**: Adapter files point to `state/` instead of copying content (Tier 2 compact mode inlines top 10 standards as exception)
+- **Summary is pure data**: No "read file X" hints — Tier 2 tools get everything inline, Tier 1 tools use @import
+- **Checkpoint marked best-effort**: All docs and adapter output honestly state AI compliance is ~40-60%, git log is ground truth
+- **Copilot marked "Summary only"**: README support table shows sync depth per tool
+- **Antigravity fallback body**: GEMINI.md includes compact body for Gemini CLI < 1.20.3
+- **Skip-if-unchanged**: Adapter writes compare content before writing, avoiding git noise
+
+### Removed
+
+- VIBE.md template, supply chain fingerprint, snapshot system, suspicious instruction detection, dead config fields (`auto_commit`, `auto_detect`, `package_managers`)
 
 ### Fixed
 
-- Windows cp950 encoding: `subprocess.run()` in `git_ops.py` now uses `encoding="utf-8"` to prevent decode failures with non-ASCII git log output
+- Windows cp950 encoding in git_ops.py
+- Heading matching in summary.py now tolerates `###` and extra whitespace
+- Code fence detection supports `~~~` syntax
+- Lock file race condition (no longer deleted after release)
 
 ---
 

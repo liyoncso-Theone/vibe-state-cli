@@ -98,15 +98,16 @@ class TestStateUTF8Handling:
 
 
 class TestStateAtomicWrites:
-    def test_write_to_readonly_raises(self, tmp_path: Path) -> None:
+    def test_write_roundtrip(self, tmp_path: Path) -> None:
         vibe_dir = _setup(tmp_path)
         write_state_file(vibe_dir, "test.md", "ok")
         assert read_state_file(vibe_dir, "test.md") == "ok"
 
-    def test_atomic_write_cleans_up_on_failure(self, tmp_path: Path) -> None:
+    def test_overwrite_preserves_content(self, tmp_path: Path) -> None:
         vibe_dir = _setup(tmp_path)
         write_state_file(vibe_dir, "test.md", "original")
-        assert read_state_file(vibe_dir, "test.md") == "original"
+        write_state_file(vibe_dir, "test.md", "updated")
+        assert read_state_file(vibe_dir, "test.md") == "updated"
 
     def test_write_and_verify_no_leftover_temps(self, tmp_path: Path) -> None:
         vibe_dir = _setup(tmp_path)

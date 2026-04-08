@@ -73,7 +73,6 @@ def init(
     from vibe_state.core.migrator import build_imported_standards, scan_legacy_files
 
     migration = scan_legacy_files(Path.cwd())
-    legacy_cleanup: list[Path] = []
 
     if migration.found_files:
         console.print(
@@ -88,7 +87,59 @@ def init(
                 f" into .vibe/state/standards.md[/]"
             )
 
-        legacy_cleanup = migration.found_files.copy()
+    # Track files that remain in place — adapters must not overwrite these
+    preserved_files: list[Path] = []
+
+    if migration.found_files:
+        import shutil
+
+        # Per-file decision: files with extracted rules get archived, others preserved
+        to_archive = [f for f in migration.found_files if f not in migration.files_without_rules]
+        to_preserve = migration.files_without_rules.copy()
+
+        # Warn about files we couldn't extract rules from
+        if to_preserve:
+            console.print(
+                f"[bold yellow]Warning:[/] Could not extract rules from "
+                f"{len(to_preserve)} file(s) (no `- bullet` lines found):"
+            )
+            for f in to_preserve:
+                console.print(f"  - {f.relative_to(Path.cwd())} — preserved, migrate manually")
+            preserved_files = to_preserve
+
+        # Two-phase archive for files with extracted rules
+        if to_archive:
+            archive_dir = vibe_dir / "archive" / "legacy"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+
+            # Phase A: Copy all
+            copied: list[tuple[Path, Path]] = []
+            for f in to_archive:
+                dest = archive_dir / f.relative_to(Path.cwd())
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dest)
+                copied.append((f, dest))
+
+            # Phase B: Verify
+            all_ok = all(
+                d.exists() and d.stat().st_size == s.stat().st_size
+                for s, d in copied
+            )
+
+            # Phase C: Unlink only after verification
+            if all_ok:
+                for src, _dest in copied:
+                    src.unlink()
+                console.print(
+                    f"[green]Archived {len(copied)} legacy file(s)"
+                    f" to .vibe/archive/legacy/[/]"
+                )
+            else:
+                console.print(
+                    "[yellow]Warning:[/] Archive verification failed. "
+                    "Originals preserved."
+                )
+                preserved_files.extend(to_archive)
 
     # Phase 3: Render templates
     from vibe_state.config import VibeConfig, save_config
@@ -138,9 +189,8 @@ def init(
     from vibe_state.adapters.registry import get_adapter
 
     ctx = build_adapter_context(Path.cwd())
-    # Tell adapters which files belong to the user (don't overwrite)
     ctx.user_owned_files = [
-        str(f.relative_to(Path.cwd())) for f in migration.found_files
+        str(f.relative_to(Path.cwd())) for f in preserved_files
     ]
     adapter_files: list[str] = []
     for adapter_name in selected_adapters:
@@ -166,18 +216,3 @@ def init(
         title="vibe init",
     ))
 
-    # Offer to clean up legacy files (now that everything is in .vibe/)
-    if legacy_cleanup:
-        console.print()
-        console.print(
-            "[yellow]The following legacy config files have been imported"
-            " into .vibe/ and are no longer needed:[/]"
-        )
-        for f in legacy_cleanup:
-            console.print(f"  - {f.relative_to(Path.cwd())}")
-        console.print(
-            "\n[dim]You can safely delete them. Their rules now live in"
-            " .vibe/state/standards.md.[/dim]"
-            "\n[dim]Run: [bold]vibe adapt --sync[/bold] to regenerate"
-            " adapter files from .vibe/ source.[/dim]"
-        )

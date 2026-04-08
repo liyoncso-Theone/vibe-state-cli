@@ -30,8 +30,8 @@ class WindsurfAdapter(AdapterBase):
             f"# Vibe Standards — {ctx.project_name}",
             "",
         ]
-        slim = "agents_md" in ctx.enabled_adapters
-        lines += self._build_common_body(ctx, slim=slim)
+        # Windsurf cannot read AGENTS.md — use compact mode
+        lines += self._build_common_body(ctx, mode="compact")
         content = "\n".join(lines)
         if not self.validate(content):
             self._warn_validation("Windsurf rule")

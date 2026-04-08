@@ -9,4 +9,4 @@ Run in terminal:
 vibe status
 ```
 
-Report the status to the user.
+Report the status.

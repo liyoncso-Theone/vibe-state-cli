@@ -9,7 +9,6 @@
 ```mermaid
 graph TB
     subgraph ".vibe/ 目錄（專案內）"
-        VIBE["VIBE.md<br/>憲法"]
         CONFIG["config.toml<br/>設定"]
         subgraph "state/（SSOT）"
             CURRENT["current.md<br/>進度快照"]
@@ -21,7 +20,6 @@ graph TB
         end
     end
 
-    VIBE --> DERIVE
     CONFIG --> DERIVE
     STD --> DERIVE
     ARCH --> DERIVE
@@ -37,7 +35,6 @@ graph TB
     DERIVE --> CLINE[".clinerules/*.md"]
     DERIVE --> ROO[".roo/rules/*.md"]
 
-    style VIBE fill:#f9d71c,stroke:#333,color:#000
     style DERIVE fill:#4ecdc4,stroke:#333,color:#000
     style CURRENT fill:#a8e6cf,stroke:#333,color:#000
     style TASKS fill:#a8e6cf,stroke:#333,color:#000
@@ -203,11 +200,10 @@ sequenceDiagram
 flowchart TB
     INPUT["使用者輸入 / 專案中繼資料"]
 
-    INPUT --> SANITIZE["_sanitize()<br/>過濾 \\n # \" ' \`"]
+    INPUT --> SANITIZE["_sanitize()<br/>過濾控制字元"]
     SANITIZE --> TEMPLATE["Jinja2 模板渲染"]
     TEMPLATE --> VALIDATE["adapter.validate()<br/>檢查 frontmatter"]
     VALIDATE --> WRITE["原子寫入<br/>temp + os.replace()"]
-    WRITE --> SNAPSHOT["save_snapshot()<br/>快照存檔"]
 
     subgraph "刪除防護"
         REMOVE["vibe adapt --remove"]

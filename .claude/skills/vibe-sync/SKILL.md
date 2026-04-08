@@ -9,4 +9,4 @@ Run in terminal:
 vibe sync
 ```
 
-Report the sync result to the user.
+Report the sync result.
