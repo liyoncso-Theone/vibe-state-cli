@@ -13,6 +13,12 @@ from vibe_state.core.lifecycle import (
     LifecycleState,
     check_transition,
 )
+from vibe_state.core.summary import (  # re-export for backward compat
+    extract_latest_progress as extract_latest_progress,
+)
+from vibe_state.core.summary import (
+    extract_section_items as extract_section_items,
+)
 
 logger = logging.getLogger("vibe")
 
@@ -68,19 +74,14 @@ def require_lifecycle(vibe_dir: Path, command: str) -> LifecycleState:
         raise typer.Exit(1) from None
 
 
-# Re-exported from core/summary.py for backward compatibility
-from vibe_state.core.summary import extract_latest_progress as extract_latest_progress
-from vibe_state.core.summary import extract_section_items as extract_section_items
-
-
 def sanitize_name(name: str) -> str:
     """Sanitize a project/adapter name: strip newlines, #, and control chars."""
     return "".join(c for c in name if c.isprintable() and c not in "\n\r#")
 
 
-def safe_load_config(vibe_dir: Path) -> "VibeConfig":  # noqa: F821
+def safe_load_config(vibe_dir: Path) -> object:
     """Load config with CLI-friendly error handling."""
-    from vibe_state.config import ConfigParseError, VibeConfig, load_config
+    from vibe_state.config import ConfigParseError, load_config
 
     try:
         return load_config(vibe_dir)

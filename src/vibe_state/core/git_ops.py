@@ -8,6 +8,13 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from vibe_state.core.constants import (
+    DEFAULT_EXPERIMENT_PATTERNS as DEFAULT_EXPERIMENT_PATTERNS,
+)
+from vibe_state.core.constants import (
+    DEFAULT_REVERT_PREFIXES as DEFAULT_REVERT_PREFIXES,
+)
+
 logger = logging.getLogger("vibe.git")
 
 
@@ -57,7 +64,10 @@ def get_log_since(root: Path, since_hash: str, limit: int = 50) -> list[str]:
         cmd = ["git", "log", "--oneline", f"-{limit}"]
     else:
         cmd = ["git", "log", "--oneline", f"{since_hash}..HEAD"]
-    result = subprocess.run(cmd, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    result = subprocess.run(
+        cmd, cwd=root, capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
     if result.returncode != 0:
         return []
     return [line for line in result.stdout.splitlines() if line.strip()]
@@ -79,7 +89,10 @@ def get_diff_stat(root: Path, since_hash: str = "") -> str:
             cmd = ["git", "diff", "--stat", f"{root_hash}..HEAD"]
         else:
             cmd = ["git", "diff", "--stat"]
-    result = subprocess.run(cmd, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    result = subprocess.run(
+        cmd, cwd=root, capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
@@ -99,10 +112,6 @@ def write_sync_cursor(vibe_dir: Path, head_hash: str) -> None:
 
 
 # ── Autoresearch commit detection ──
-
-# Re-export from constants (single source of truth)
-from vibe_state.core.constants import DEFAULT_EXPERIMENT_PATTERNS as DEFAULT_EXPERIMENT_PATTERNS
-from vibe_state.core.constants import DEFAULT_REVERT_PREFIXES as DEFAULT_REVERT_PREFIXES
 
 
 @dataclass

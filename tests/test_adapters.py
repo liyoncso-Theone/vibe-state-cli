@@ -298,7 +298,8 @@ class TestCompactMode:
         assert adapter is not None
         ctx = _make_ctx(tmp_path, standards="- Use snake_case\n- Write tests\n")
         adapter.emit(ctx)
-        content = (tmp_path / ".cursor" / "rules" / "vibe-standards.mdc").read_text(encoding="utf-8")
+        mdc = tmp_path / ".cursor" / "rules" / "vibe-standards.mdc"
+        content = mdc.read_text(encoding="utf-8")
         assert "snake_case" in content  # Standards inlined
         assert "READ THESE FILES" not in content  # No file-read instruction
 
@@ -307,7 +308,8 @@ class TestCompactMode:
         assert adapter is not None
         ctx = _make_ctx(tmp_path)
         adapter.emit(ctx)
-        content = (tmp_path / ".cursor" / "rules" / "vibe-standards.mdc").read_text(encoding="utf-8")
+        mdc = tmp_path / ".cursor" / "rules" / "vibe-standards.mdc"
+        content = mdc.read_text(encoding="utf-8")
         assert "## Workflow" in content
         assert "## Boundaries" in content
         assert "Vibe Commands" in content
@@ -320,7 +322,8 @@ class TestCompactMode:
         assert adapter is not None
         ctx = _make_ctx(tmp_path, standards=many_rules)
         adapter.emit(ctx)
-        content = (tmp_path / ".cursor" / "rules" / "vibe-standards.mdc").read_text(encoding="utf-8")
+        mdc = tmp_path / ".cursor" / "rules" / "vibe-standards.mdc"
+        content = mdc.read_text(encoding="utf-8")
         assert "Rule 9" in content
         assert "Rule 10" not in content  # 11th rule (0-indexed)
 

@@ -8,8 +8,8 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-from collections.abc import Iterator
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 logger = logging.getLogger("vibe.state")
