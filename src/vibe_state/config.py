@@ -7,7 +7,13 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from vibe_state.core.constants import DEFAULT_EXPERIMENT_PATTERNS, DEFAULT_REVERT_PREFIXES
+
 logger = logging.getLogger("vibe.config")
+
+
+class ConfigParseError(Exception):
+    """Raised when config.toml cannot be parsed."""
 
 
 class VibeSection(BaseModel):
@@ -22,7 +28,6 @@ class StateSection(BaseModel):
 
 class AdaptersSection(BaseModel):
     enabled: list[str] = Field(default_factory=lambda: ["agents_md"])
-    auto_detect: bool = True
 
     def model_post_init(self, __context: object) -> None:
         # Deduplicate while preserving order
@@ -37,29 +42,18 @@ class AdaptersSection(BaseModel):
 
 class GitSection(BaseModel):
     enabled: bool = True
-    auto_commit: bool = False
 
 
 class ExperimentsSection(BaseModel):
     """Configuration for autoresearch experiment detection."""
 
     # Patterns to match in commit messages (case-insensitive)
-    commit_patterns: list[str] = Field(default_factory=lambda: [
-        "autoresearch:",
-        "experiment:",
-        "[autoresearch]",
-        "[experiment]",
-        "auto-research",
-    ])
-
-    # Patterns that indicate a FAILED experiment (must appear BEFORE the message body)
-    # Only matches when the revert keyword is in the PREFIX portion (pattern + first word)
-    revert_prefixes: list[str] = Field(default_factory=lambda: [
-        "revert",
-        "reset",
-        "rollback",
-        "undo",
-    ])
+    commit_patterns: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_EXPERIMENT_PATTERNS)
+    )
+    revert_prefixes: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_REVERT_PREFIXES)
+    )
 
 
 class VibeConfig(BaseModel):
@@ -89,13 +83,10 @@ def load_config(vibe_dir: Path) -> VibeConfig:
             data = tomllib.load(f)
         return VibeConfig(**data)
     except Exception as e:
-        from rich.console import Console
-
-        Console(stderr=True).print(
-            f"[bold red]Error:[/] Failed to parse config.toml: {e}\n"
-            f"[dim]Fix or delete .vibe/config.toml to continue.[/]"
-        )
-        raise SystemExit(1) from e
+        raise ConfigParseError(
+            f"Failed to parse config.toml: {e}\n"
+            f"Fix or delete .vibe/config.toml to continue."
+        ) from e
 
 
 def save_config(vibe_dir: Path, config: VibeConfig) -> None:

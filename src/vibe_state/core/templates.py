@@ -71,9 +71,6 @@ def render_all_state_files(
 
     files: dict[str, str] = {}
 
-    # VIBE.md (constitution)
-    files["VIBE.md"] = render_template("vibe.md.j2", lang=lang, **ctx)
-
     # state/ files
     for name in ["architecture", "current", "tasks", "standards", "archive", "experiments"]:
         files[f"state/{name}.md"] = render_template(

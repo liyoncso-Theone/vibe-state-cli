@@ -113,7 +113,6 @@ class TestCompactorTrimsCurrentBySections:
         compact_tasks(vibe_dir)
         content = read_state_file(vibe_dir, "current.md")
         # All code fences must be paired
-        assert content.count("```python") == content.count("```") // 2 or True
         fences = [line for line in content.splitlines() if line.strip().startswith("```")]
         assert len(fences) % 2 == 0, f"Unmatched fences: {len(fences)}"
 

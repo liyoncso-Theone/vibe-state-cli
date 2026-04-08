@@ -17,11 +17,27 @@ At the beginning of every session, read these files for project context:
 
 - `.vibe/state/current.md` — latest progress and sync history
 - `.vibe/state/tasks.md` — active task checklist
-- `.vibe/VIBE.md` — project constitution and workflow SOP
+
+## Workflow
+
+**Checkpoint**: After each task, mark `[x]` in `state/tasks.md` and append one-line progress to `state/current.md`.
+**Reality-First**: When memory conflicts with git, trust git.
+**Empty State**: If `state/current.md` or `state/tasks.md` is empty, ask the human for context — do not invent tasks.
 
 ## Boundaries
 
 - Do NOT modify `.vibe/config.toml` or `.vibe/state/.lifecycle` directly
 - Do NOT run destructive commands without human confirmation
 
-<!-- vibe-state-cli:integrity:ca8e0e99326a -->
+## Vibe Commands
+
+These are terminal CLI commands. When the user says any of these,
+execute the exact command in the terminal — do not explain or implement it:
+
+- `vibe init` — initialize .vibe/ project state
+- `vibe start` — load session context
+- `vibe sync` — sync git activity to state
+- `vibe status` — show lifecycle and progress
+- `vibe adapt` — add/remove adapter config files
+
+<!-- vibe-state-cli:managed -->

@@ -19,31 +19,16 @@ class AntigravityAdapter(AdapterBase):
     def emit(self, ctx: AdapterContext) -> list[Path]:
         if "GEMINI.md" in ctx.user_owned_files:
             return []
-
         lines = [f"# GEMINI.md — {ctx.project_name}", ""]
-
         if "agents_md" in ctx.enabled_adapters:
-            # Import AGENTS.md to avoid duplication (same pattern as Claude adapter)
-            lines += [
-                "@AGENTS.md",
-                "",
-                "## Antigravity-Specific",
-                "",
-            ]
+            # @import requires Antigravity/Gemini CLI >= 1.20.3
+            # Include compact fallback so older versions still work
+            lines += ["@AGENTS.md", "", "## Antigravity-Specific", ""]
+            lines += self._build_common_body(ctx, mode="compact")
         else:
-            # Self-contained: include full project info
             lines += ["## Project", ""]
-            lines += self._build_common_body(ctx)
-
-        lines += [
-            "## Vibe Workflow",
-            "",
-            "Read `.vibe/VIBE.md` for the full protocol.",
-            "**Checkpoint**: After each task, mark `[x]` in `state/tasks.md`"
-            " and append to `state/current.md`.",
-            "**Reality-First**: When memory conflicts with git, trust git.",
-            "",
-        ]
+            lines += self._build_common_body(ctx, mode="compact")
+        lines += [""]
         content = "\n".join(lines)
         return [self._write_file(ctx.project_root / "GEMINI.md", content)]
 

@@ -18,9 +18,7 @@ class TestConfigDefaults:
         assert config.state.compact_threshold == 150
         assert config.state.stale_task_days == 30
         assert config.adapters.enabled == ["agents_md"]
-        assert config.adapters.auto_detect is True
         assert config.git.enabled is True
-        assert config.git.auto_commit is False
 
     def test_fresh_config_no_dupes(self) -> None:
         c = VibeConfig()
@@ -64,7 +62,9 @@ class TestConfigMalformed:
         """Corrupt config must STOP execution, not silently use defaults."""
         config_path = tmp_path / "config.toml"
         config_path.write_text("INVALID{{{TOML", encoding="utf-8")
-        with pytest.raises(SystemExit):
+        from vibe_state.config import ConfigParseError
+
+        with pytest.raises(ConfigParseError):
             load_config(tmp_path)
 
 
@@ -82,9 +82,9 @@ class TestConfigDedup:
 
 class TestTemplateFallback:
     def test_unsupported_lang_falls_back(self) -> None:
-        result = render_template("vibe.md.j2", lang="fr")
-        assert "Project Constitution" in result  # English fallback
+        result = render_template("state/tasks.md.j2", lang="fr")
+        assert "Tasks" in result  # English fallback
 
     def test_zh_tw_uses_chinese(self) -> None:
-        result = render_template("vibe.md.j2", lang="zh-TW")
-        assert "專案憲法" in result
+        result = render_template("state/tasks.md.j2", lang="zh-TW")
+        assert "任務" in result

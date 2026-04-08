@@ -53,7 +53,6 @@ class ScanResult:
     languages: list[str] = field(default_factory=list)
     frameworks: list[str] = field(default_factory=list)
     detected_tools: list[str] = field(default_factory=list)
-    package_managers: list[str] = field(default_factory=list)
     project_root: Path = field(default_factory=lambda: Path.cwd())
     has_git: bool = False
 

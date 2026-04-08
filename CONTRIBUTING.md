@@ -37,7 +37,7 @@ make lock                 # Regenerates uv.lock
 src/vibe_state/
 ├── cli.py              # Thin entry point (imports commands/)
 ├── config.py           # config.toml schema (Pydantic)
-├── safety.py           # Snapshots, backups, dry-run
+├── safety.py           # Backups for adapter operations
 ├── commands/           # 5 CLI commands (modular)
 │   ├── _helpers.py     # Shared utils, app definition, --verbose
 │   ├── cmd_init.py     # vibe init (scan + migrate + generate)
@@ -47,9 +47,9 @@ src/vibe_state/
 │   └── cmd_adapt.py    # vibe adapt
 ├── core/               # Core logic (no CLI dependency)
 │   ├── scanner.py      # Language/framework/tool detection
-│   ├── lifecycle.py    # State machine with exponential backoff lock
+│   ├── lifecycle.py    # State machine (UNINIT/READY/ACTIVE/CLOSED)
 │   ├── git_ops.py      # Git read-only + autoresearch detection
-│   ├── state.py        # Atomic file I/O with locking
+│   ├── state.py        # Atomic file I/O
 │   ├── compactor.py    # AST-based Markdown compression
 │   ├── migrator.py     # Legacy file detection + rule import
 │   └── templates.py    # Jinja2 rendering with i18n
@@ -69,6 +69,8 @@ src/vibe_state/
 5. Add detection signature to `scanner.py:TOOL_SIGNATURES`
 6. Add tests to `tests/test_adapters.py`
 7. Update `README.md` supported tools table
+
+Note: `_build_common_body()` in `base.py` includes a "Vibe Commands" section in all adapter output that instructs AI tools to execute vibe CLI commands in the terminal. If the target tool supports [Agent Skills](https://agentskills.io/) (`.claude/skills/*/SKILL.md`), consider generating skill files in `emit()` — see `claude.py` for reference.
 
 ## Commit Convention
 

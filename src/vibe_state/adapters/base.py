@@ -13,48 +13,19 @@ class AdapterContext:
 
     project_root: Path
     vibe_dir: Path
-    constitution: str  # VIBE.md content
-    standards: str  # state/standards.md content
-    architecture: str  # state/architecture.md content
+    standards: str = ""
+    architecture: str = ""
     languages: list[str] = field(default_factory=list)
     frameworks: list[str] = field(default_factory=list)
     project_name: str = ""
     enabled_adapters: list[str] = field(default_factory=list)
-    user_owned_files: list[str] = field(default_factory=list)  # Files not to overwrite
+    user_owned_files: list[str] = field(default_factory=list)
+    state_summary: str = ""  # Compact digest injected into adapter output
 
 
 def _sanitize(value: str) -> str:
-    """Strip newlines, #, quotes, and control chars from user-controlled strings."""
-    return "".join(c for c in value if c.isprintable() and c not in '\n\r#"\'`')
-
-
-# Patterns that indicate malicious injection in standards/state files
-_SUSPICIOUS_PATTERNS = [
-    "eval(",
-    "exec(",
-    "system(",
-    "import os",
-    "import subprocess",
-    "__import__",
-    "curl ",
-    "wget ",
-    "rm -rf",
-    "ignore all",
-    "ignore previous",
-    "disregard",
-    "override all",
-    "new rule",
-    "send all",
-    "exfiltrate",
-    "http://",
-    "https://",
-]
-
-
-def _is_suspicious_instruction(text: str) -> bool:
-    """Detect potentially malicious instructions in state file content."""
-    lower = text.lower()
-    return any(pattern in lower for pattern in _SUSPICIOUS_PATTERNS)
+    """Strip control chars from user-controlled strings (project names)."""
+    return "".join(c for c in value if c.isprintable() and c not in "\n\r")
 
 
 def build_adapter_context(project_root: Path) -> AdapterContext:
@@ -66,8 +37,10 @@ def build_adapter_context(project_root: Path) -> AdapterContext:
         return p.read_text(encoding="utf-8") if p.exists() else ""
 
     from vibe_state.config import load_config
+    from vibe_state.core.summary import build_state_summary
 
     config = load_config(vibe_dir)
+    summary = build_state_summary(vibe_dir)
 
     # Parse languages/frameworks from architecture.md
     languages: list[str] = []
@@ -86,13 +59,13 @@ def build_adapter_context(project_root: Path) -> AdapterContext:
     return AdapterContext(
         project_root=project_root,
         vibe_dir=vibe_dir,
-        constitution=_read("VIBE.md"),
         standards=_read("state/standards.md"),
         architecture=_read("state/architecture.md"),
         languages=[_sanitize(lang) for lang in languages],
         frameworks=[_sanitize(fw) for fw in frameworks],
         project_name=_sanitize(project_root.name),
         enabled_adapters=config.adapters.enabled,
+        state_summary=summary,
     )
 
 
@@ -119,78 +92,135 @@ class AdapterBase(ABC):
         return True
 
     def _write_file(self, path: Path, content: str) -> Path:
-        """Write content to file with integrity marker (markdown only)."""
-        import hashlib
+        """Write content to file with managed marker. Skip if unchanged.
+
+        Uses retry to handle IDE/antivirus file locks on Windows.
+        """
+        import time
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Add integrity marker only to markdown files (not JSON, TOML, etc.)
         if path.suffix in (".md", ".mdc"):
-            content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
-            content = content.rstrip() + f"\n\n<!-- vibe-state-cli:integrity:{content_hash} -->\n"
-        path.write_text(content, encoding="utf-8", newline="\n")
-        return path
+            content = content.rstrip() + "\n\n<!-- vibe-state-cli:managed -->\n"
+        # Skip write if content is identical (avoid unnecessary git diffs)
+        if path.exists():
+            try:
+                if path.read_text(encoding="utf-8") == content:
+                    return path
+            except (OSError, UnicodeDecodeError):
+                pass
+        # Retry on PermissionError (IDE or antivirus may hold the file)
+        for attempt in range(3):
+            try:
+                path.write_text(content, encoding="utf-8", newline="\n")
+                return path
+            except PermissionError:
+                if attempt < 2:
+                    time.sleep(0.1 * (attempt + 1))
+                else:
+                    raise
+        return path  # pragma: no cover
+
+    # Max lines of standards to inline in compact mode
+    _MAX_INLINE_STANDARDS = 10
 
     def _build_common_body(
-        self, ctx: AdapterContext, *, slim: bool = False
+        self, ctx: AdapterContext, *, mode: str = "full"
     ) -> list[str]:
-        """Build the common project info + standards + security block.
+        """Build adapter body content.
 
-        Args:
-            slim: If True, emit only the session-start directive (for when
-                  AGENTS.md is also enabled and already carries the full body).
+        Modes:
+            full    — AGENTS.md: complete Session Start + Workflow + Boundaries + Commands
+            slim    — Tier 1 with AGENTS.md: one-line pointer
+            compact — Tier 2: inline standards + compact rules, no "read files" instruction
         """
         lines: list[str] = []
 
-        if slim:
-            # Minimal: just point to AGENTS.md and .vibe/ for details
+        # State summary always injected first (all modes)
+        if ctx.state_summary:
+            lines += ctx.state_summary.splitlines() + [""]
+
+        if mode == "slim":
             lines += [
-                "See AGENTS.md for project standards and security rules.",
+                "See AGENTS.md for all project standards, workflow, and rules.",
                 "",
             ]
-        else:
-            if ctx.languages:
-                lines.append(f"- Languages: {', '.join(ctx.languages)}")
-            if ctx.frameworks:
-                lines.append(f"- Frameworks: {', '.join(ctx.frameworks)}")
+            return lines
 
-            # Pull standards with injection detection
-            has_security = False
+        if mode == "compact":
+            # Tier 2: inline standards + compact rules — no file-read instructions
             if ctx.standards:
-                for line in ctx.standards.splitlines():
-                    stripped = line.strip()
-                    if stripped.startswith("- ") and not stripped.startswith("- ("):
-                        lower = stripped.lower()
-                        if _is_suspicious_instruction(lower):
-                            continue
-                        lines.append(_sanitize(stripped))
-                        if "hardcode" in lower or "secret" in lower:
-                            has_security = True
+                # Extract complete rule blocks (- line + continuation lines)
+                std_lines: list[str] = []
+                rule_count = 0
+                for raw_line in ctx.standards.splitlines():
+                    stripped = raw_line.strip()
+                    if stripped.startswith("- ") and stripped != "- (none)":
+                        if rule_count >= self._MAX_INLINE_STANDARDS:
+                            break
+                        std_lines.append(stripped)
+                        rule_count += 1
+                    elif std_lines and (raw_line.startswith("  ") or raw_line.startswith("\t")):
+                        # Continuation line (indented under a bullet)
+                        std_lines.append(raw_line.rstrip())
+                    # Skip non-bullet, non-continuation lines (headers, blanks)
+                if std_lines:
+                    lines += ["## Standards", ""]
+                    lines += std_lines
+                    lines += [""]
 
-            # Only add security block if standards didn't already include it
-            if not has_security:
-                lines += [
-                    "",
-                    "## Security",
-                    "",
-                    "- Never hardcode secrets, tokens, or passwords",
-                    "- Use .env files for environment variables",
-                ]
+            lines += [
+                "## Workflow",
+                "",
+                "Checkpoint: mark `[x]` in `state/tasks.md`, append progress"
+                " to `state/current.md` (best-effort, git is ground truth).",
+                "Reality-First: git > memory. Do NOT invent tasks.",
+                "",
+                "## Boundaries",
+                "",
+                "- Do NOT modify `.vibe/config.toml` or `.vibe/state/.lifecycle`",
+                "- Do NOT run destructive commands without human confirmation",
+                "",
+                "## Vibe Commands (run in terminal, not code)",
+                "",
+                "`vibe init` | `vibe start` | `vibe sync` | `vibe status` | `vibe adapt`",
+                "",
+            ]
+            return lines
 
-        # Always include: session-start directive + boundaries
+        # mode == "full" — AGENTS.md: complete version
         lines += [
-            "",
             "## Session Start — READ THESE FILES",
             "",
             "At the beginning of every session, read these files for project context:",
             "",
             "- `.vibe/state/current.md` — latest progress and sync history",
             "- `.vibe/state/tasks.md` — active task checklist",
-            "- `.vibe/VIBE.md` — project constitution and workflow SOP",
+            "- `.vibe/state/standards.md` — coding conventions and project rules",
+            "",
+            "## Workflow",
+            "",
+            "**Checkpoint**: After each task, mark `[x]` in `state/tasks.md`"
+            " and append one-line progress to `state/current.md`."
+            " (Best-effort — `vibe sync` captures git history as ground truth.)",
+            "**Reality-First**: When memory conflicts with git, trust git.",
+            "**Empty State**: If `state/current.md` or `state/tasks.md` is empty,"
+            " ask the human for context — do not invent tasks.",
             "",
             "## Boundaries",
             "",
             "- Do NOT modify `.vibe/config.toml` or `.vibe/state/.lifecycle` directly",
             "- Do NOT run destructive commands without human confirmation",
+            "",
+            "## Vibe Commands",
+            "",
+            "These are terminal CLI commands. When the user says any of these,",
+            "execute the exact command in the terminal — do not explain or implement it:",
+            "",
+            "- `vibe init` — initialize .vibe/ project state",
+            "- `vibe start` — load session context",
+            "- `vibe sync` — sync git activity to state",
+            "- `vibe status` — show lifecycle and progress",
+            "- `vibe adapt` — add/remove adapter config files",
             "",
         ]
         return lines

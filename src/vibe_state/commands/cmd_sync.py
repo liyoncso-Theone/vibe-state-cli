@@ -12,6 +12,7 @@ from vibe_state.commands._helpers import (
     app,
     console,
     get_vibe_dir,
+    refresh_adapters,
     require_lifecycle,
 )
 
@@ -127,6 +128,7 @@ def sync(
         )
         write_state_file(vibe_dir, "retrospective.md", retro)
         write_state(vibe_dir, next_state)
+        refresh_adapters(vibe_dir)
         console.print(Panel(
             "Final sync + compact completed.\n"
             "Retrospective template: state/retrospective.md\n"
@@ -135,6 +137,11 @@ def sync(
             title="[bold]vibe sync --close[/]",
         ))
         return
+
+    # ── Refresh adapter files with latest state summary ──
+    count = refresh_adapters(vibe_dir)
+    if count:
+        console.print(f"[dim]Refreshed {count} adapter file(s).[/]")
 
     # ── C.L.E.A.R. checklist (only when there were actual changes) ──
     if not has_changes:

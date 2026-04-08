@@ -9,11 +9,11 @@ from rich.table import Table
 
 from vibe_state.commands._helpers import (
     app,
-    check_fingerprint,
     console,
     extract_latest_progress,
     extract_section_items,
     get_vibe_dir,
+    refresh_adapters,
     require_lifecycle,
 )
 
@@ -33,15 +33,6 @@ def start() -> None:
 
     vibe_dir = get_vibe_dir()
     next_state = require_lifecycle(get_vibe_dir(), "start")
-
-    # Supply chain protection: warn if .vibe/ was not generated on this machine
-    if not check_fingerprint(vibe_dir):
-        console.print(
-            "[bold yellow]Warning:[/] This .vibe/ was not generated on this machine.\n"
-            "It may have come from a cloned repository. Review .vibe/VIBE.md\n"
-            "for unexpected instructions before proceeding.\n"
-            "[dim]Run [bold]vibe init --force[/bold] to regenerate and claim ownership.[/dim]\n"
-        )
 
     config = load_config(vibe_dir)
 
@@ -97,6 +88,9 @@ def start() -> None:
             exp_summary = f"{kept} kept, {reverted} reverted"
 
     write_state(vibe_dir, next_state)
+
+    # Refresh adapter files with latest state summary
+    refresh_adapters(vibe_dir)
 
     # Output Rich summary
     table = Table(show_header=False, box=None, padding=(0, 2))

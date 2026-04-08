@@ -20,18 +20,17 @@ class CopilotAdapter(AdapterBase):
     def emit(self, ctx: AdapterContext) -> list[Path]:
         files: list[Path] = []
 
-        slim = "agents_md" in ctx.enabled_adapters
-
+        # Copilot cannot read AGENTS.md — use compact mode (4000 char limit)
         # Main instructions (no frontmatter)
         main = [f"# Copilot Instructions — {ctx.project_name}", ""]
-        main += self._build_common_body(ctx, slim=slim)
+        main += self._build_common_body(ctx, mode="compact")
         files.append(self._write_file(
             ctx.project_root / ".github" / "copilot-instructions.md", "\n".join(main)
         ))
 
         # Path-scoped instructions
         scoped = ["---", 'applyTo: "**/*"', "---", "", "# Vibe Standards", ""]
-        scoped += self._build_common_body(ctx, slim=slim)
+        scoped += self._build_common_body(ctx, mode="compact")
         content = "\n".join(scoped)
         if not self.validate(content):
             self._warn_validation("Copilot instructions")
