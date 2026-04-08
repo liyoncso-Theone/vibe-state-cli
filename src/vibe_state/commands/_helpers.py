@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vibe_state.config import VibeConfig
 
 import typer
 from rich.console import Console
@@ -79,7 +83,7 @@ def sanitize_name(name: str) -> str:
     return "".join(c for c in name if c.isprintable() and c not in "\n\r#")
 
 
-def safe_load_config(vibe_dir: Path) -> object:
+def safe_load_config(vibe_dir: Path) -> VibeConfig:
     """Load config with CLI-friendly error handling."""
     from vibe_state.config import ConfigParseError, load_config
 
