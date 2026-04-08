@@ -77,8 +77,8 @@ vibe start
 │  Git           3 uncommitted changes   │
 │  Open issues   (none)                  │
 │  Top tasks                             │
-│                  1. Build auth module   │
-│                  2. Write tests         │
+│                  1. Build auth module  │
+│                  2. Write tests        │
 │  Experiments   5 kept, 2 reverted      │
 └──────────────── Session loaded ────────┘
 ```
@@ -180,35 +180,90 @@ Afternoon: Cursor IDE
 
 ### 搭配 Autoresearch
 
+[Autoresearch](https://github.com/uditgoenka/autoresearch) 是自主迭代框架，對任何可量化的目標自動跑 **修改 → 驗證 → 保留/捨棄 → 重複** 循環。
+
+**基本流程：**
+
 ```bash
-# 在 Claude Code 中：
+# Step 1: 在 Claude Code 中啟動 autoresearch
 /autoresearch
 Goal: Improve test coverage to 95%
 Scope: src/**/*.py
+Metric: pytest --cov --cov-report=term | grep TOTAL | awk '{print $4}'
+Direction: higher_is_better
 Verify: pytest --cov --cov-fail-under=95
 
-# Autoresearch 自動跑迴圈（改 code → commit → test → keep/revert）
-# 完成後：
-vibe sync    # 自動偵測 experiment commits → 記錄到 state/experiments.md
-vibe start   # 顯示實驗摘要：5 kept, 3 reverted
+# Step 2: Autoresearch 自動跑迴圈
+#   → 每次做一個原子修改 → commit → 跑 metric
+#   → metric 改善 → KEEP（保留 commit）
+#   → metric 退步 → REVERT（回滾 commit，但歷史保留）
+
+# Step 3: 完成後用 vibe 記錄
+vibe sync    # 掃描 git log → 偵測實驗 commit → 寫入 state/experiments.md
+vibe start   # 顯示摘要：5 kept, 3 reverted
 ```
+
+**Autoresearch 的完整指令：**
+
+| 指令                     | 用途                                                    |
+| ------------------------ | ------------------------------------------------------- |
+| `/autoresearch`          | 主要迭代迴圈（有界/無界）                               |
+| `/autoresearch:plan`     | 互動式嚮導：設定 Goal、Scope、Metric、Direction、Verify |
+| `/autoresearch:debug`    | 科學除錯法：假設 → 驗證 → 修正                          |
+| `/autoresearch:fix`      | 自動修錯迴圈（每輪修一個，失敗自動回滾）                |
+| `/autoresearch:security` | STRIDE 威脅模型 + OWASP Top 10 + 紅隊審計               |
+| `/autoresearch:learn`    | 自動生成/更新文件                                       |
+| `/autoresearch:ship`     | 8 階段通用上線流程                                      |
+| `/autoresearch:predict`  | 5 人格專家群體分析                                      |
+| `/autoresearch:reason`   | 對抗式精煉（生成 → 批判 → 綜合 → 裁決）                 |
+| `/autoresearch:scenario` | 邊界案例 + 衍生情境探索                                 |
+
+**vibe-state-cli 的偵測機制：**
+
+`vibe sync` 掃描 git log，根據 commit message 的 pattern 判定是否為實驗 commit：
+
+```text
+# 預設偵測的 pattern（不分大小寫）
+autoresearch:    experiment:    [autoresearch]    [experiment]    auto-research
+```
+
+回滾偵測只看訊息**前綴**的第一個詞是否為 `revert`、`reset`、`rollback`、`undo`：
+
+```text
+autoresearch: revert - metric dropped    → [REVERTED] ✓ 正確
+experiment: fix revert payment issue     → [KEPT]     ✓ 正確（revert 在 body 不在前綴）
+```
+
+**自訂 pattern**（`.vibe/config.toml`）：
+
+```toml
+[experiments]
+commit_patterns = ["autoresearch:", "experiment:", "[autoresearch]", "[experiment]", "auto-research"]
+revert_prefixes = ["revert", "reset", "rollback", "undo"]
+```
+
+**適用範圍**：不只是程式碼。Autoresearch 可以優化任何可量測的東西 — 測試覆蓋率 ↑、Lighthouse 分數 ↑、打包大小 ↓、延遲 ↓、安全漏洞 ↓。
 
 ---
 
 ## 支援的 AI 工具
 
-| 工具 | Adapter 名稱 | 自動偵測標誌 |
-| ---- | ------------ | ------------ |
-| AGENTS.md（通用標準） | `agents_md` | `AGENTS.md` 已存在 |
-| Claude Code | `claude` | `.claude/` 或 `CLAUDE.md` |
-| Google Antigravity / Gemini CLI | `antigravity` | `GEMINI.md` 或 `.gemini/` |
-| Cursor | `cursor` | `.cursor/` 或 `.cursorrules` |
-| GitHub Copilot (VS Code) | `copilot` | `.github/copilot-instructions.md` |
-| Windsurf | `windsurf` | `.windsurf/` 或 `.windsurfrules` |
-| Cline | `cline` | `.clinerules/` |
-| Roo Code | `roo` | `.roo/` |
+| 工具                            | Adapter 名稱  | 自動偵測標誌                           |
+| ------------------------------- | ------------- | -------------------------------------- |
+| AGENTS.md（通用標準）           | `agents_md`   | `AGENTS.md` 已存在                     |
+| Claude Code                     | `claude`      | `.claude/` 或 `CLAUDE.md`（含 skills） |
+| Google Antigravity / Gemini CLI | `antigravity` | `GEMINI.md` 或 `.gemini/`              |
+| Cursor                          | `cursor`      | `.cursor/` 或 `.cursorrules`           |
+| GitHub Copilot (VS Code)        | `copilot`     | `.github/copilot-instructions.md`      |
+| Windsurf                        | `windsurf`    | `.windsurf/` 或 `.windsurfrules`       |
+| Cline                           | `cline`       | `.clinerules/`                         |
+| Roo Code                        | `roo`         | `.roo/`                                |
 
 **Token 節約**：當 AGENTS.md + 其他 adapter 同時啟用時，其他 adapter 自動切換 slim 模式（只放 frontmatter + 指向 AGENTS.md），避免重複內容浪費 token。
+
+**Vibe Commands**：所有 adapter 生成的設定檔都包含「Vibe Commands」區塊，告訴 AI 工具：「當使用者說 `vibe sync`，直接在終端執行該命令，不要解釋或實作它。」這個機制不需要外掛，跨所有 AI 工具通用。
+
+**Claude Code Skills**：Claude adapter 額外生成 `.claude/skills/vibe-*/SKILL.md`，讓 `/vibe-init`、`/vibe-start`、`/vibe-sync`、`/vibe-status`、`/vibe-adapt` 可以直接當 slash command 使用。此格式遵循 [Agent Skills 開放標準](https://agentskills.io/)，同時適用於 Claude Code、Cline 等支援該標準的工具。
 
 ---
 
@@ -229,3 +284,7 @@ vibe start   # 顯示實驗摘要：5 kept, 3 reverted
 ### experiments.md 是什麼？
 
 是 autoresearch 實驗的自動記錄。`vibe sync` 會偵測 git log 中帶有 `autoresearch:` 或 `[autoresearch]` 前綴的 commit，記錄為 KEPT 或 REVERTED。
+
+### 在 IDE 裡打 `vibe sync` AI 不理我？
+
+所有 adapter 生成的設定檔都包含「Vibe Commands」指令，告訴 AI 直接執行終端命令。如果 AI 還是不理解，可以說「請在終端執行 `vibe sync`」。如果你用 Claude Code 或 Cline，可以直接打 `/vibe-sync`（slash command）。

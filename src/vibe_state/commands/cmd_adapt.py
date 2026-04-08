@@ -78,12 +78,12 @@ def adapt(
             console.print("[dim](dry-run, no files changed)[/]")
             return
         if not confirm:
-            from vibe_state.safety import has_user_modifications
-
-            modified = has_user_modifications(vibe_dir, remove, files_to_remove)
-            if modified:
+            # Check if files lack the vibe marker (user may have edited them)
+            edited = [f for f in files_to_remove if f.exists()
+                      and "vibe-state-cli:" not in f.read_text(encoding="utf-8", errors="replace")]
+            if edited:
                 console.print("[yellow]Warning:[/] These files have been manually edited:")
-                for f in modified:
+                for f in edited:
                     console.print(f"  - {f.relative_to(Path.cwd())}")
             console.print(
                 f"[yellow]This will remove {len(files_to_remove)} file(s) for {remove}.[/]\n"
@@ -106,7 +106,6 @@ def adapt(
 
     if sync_adapters:
         from vibe_state.adapters.base import build_adapter_context
-        from vibe_state.safety import has_user_modifications, save_snapshot
 
         ctx = build_adapter_context(Path.cwd())
         total_files = 0
@@ -116,15 +115,16 @@ def adapt(
                 console.print(f"[yellow]Unknown adapter:[/] {adapter_name}")
                 continue
             existing_files = adapter.clean(Path.cwd())
-            modified = has_user_modifications(vibe_dir, adapter_name, existing_files)
-            if modified and not confirm:
+            # Check for user-modified files (missing vibe marker)
+            edited = [f for f in existing_files if f.exists()
+                      and "vibe-state-cli:" not in f.read_text(encoding="utf-8", errors="replace")]
+            if edited and not confirm:
                 msg = "files modified by user, use --confirm to overwrite"
                 console.print(f"[yellow]{adapter_name}:[/] {msg}")
-                for f in modified:
+                for f in edited:
                     console.print(f"  - {f.relative_to(Path.cwd())}")
                 continue
             emitted = adapter.emit(ctx)
-            save_snapshot(vibe_dir, adapter_name, emitted)
             total_files += len(emitted)
             console.print(f"[green]{adapter_name}:[/] {len(emitted)} file(s) synced")
         console.print(f"\n[bold]Total:[/] {total_files} adapter file(s) synced.")

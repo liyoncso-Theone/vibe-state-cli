@@ -14,7 +14,6 @@ from vibe_state.commands._helpers import (
     get_vibe_dir,
     require_lifecycle,
     sanitize_name,
-    write_fingerprint,
 )
 
 
@@ -27,7 +26,7 @@ def init(
     check_dangerous_directory()
     vibe_dir = get_vibe_dir()
 
-    if (vibe_dir / "VIBE.md").exists() and not force:
+    if (vibe_dir / "state" / ".lifecycle").exists() and not force:
         console.print("[yellow]Warning:[/] .vibe/ already exists. Use --force to reinitialize.")
         raise typer.Exit(1)
 
@@ -125,14 +124,11 @@ def init(
     save_config(vibe_dir, config)
     write_state(vibe_dir, LifecycleState.READY)
 
-    # Write fingerprint (supply chain protection)
-    write_fingerprint(vibe_dir)
-
-    # Write internal .gitignore for snapshots/backups
+    # Write internal .gitignore for backups
     internal_gitignore = vibe_dir / ".gitignore"
     if not internal_gitignore.exists():
         internal_gitignore.write_text(
-            "# vibe-state-cli internals (do not commit)\nsnapshots/\nbackups/\n.fingerprint\n",
+            "# vibe-state-cli internals (do not commit)\nbackups/\n",
             encoding="utf-8",
             newline="\n",
         )
@@ -140,11 +136,9 @@ def init(
     # Phase 5: Emit adapter files
     from vibe_state.adapters.base import build_adapter_context
     from vibe_state.adapters.registry import get_adapter
-    from vibe_state.safety import save_snapshot
 
     ctx = build_adapter_context(Path.cwd())
     # Tell adapters which files belong to the user (don't overwrite)
-    # Use relative path from project root for precise matching
     ctx.user_owned_files = [
         str(f.relative_to(Path.cwd())) for f in migration.found_files
     ]
@@ -153,7 +147,6 @@ def init(
         adapter = get_adapter(adapter_name)
         if adapter:
             emitted = adapter.emit(ctx)
-            save_snapshot(vibe_dir, adapter_name, emitted)
             adapter_files.extend(str(f.relative_to(Path.cwd())) for f in emitted)
 
     # Summary

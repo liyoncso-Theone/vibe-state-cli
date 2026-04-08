@@ -70,6 +70,8 @@ src/vibe_state/
 6. Add tests to `tests/test_adapters.py`
 7. Update `README.md` supported tools table
 
+Note: `_build_common_body()` in `base.py` includes a "Vibe Commands" section in all adapter output that instructs AI tools to execute vibe CLI commands in the terminal. If the target tool supports [Agent Skills](https://agentskills.io/) (`.claude/skills/*/SKILL.md`), consider generating skill files in `emit()` — see `claude.py` for reference.
+
 ## Commit Convention
 
 - Follow [Conventional Commits](https://www.conventionalcommits.org/)

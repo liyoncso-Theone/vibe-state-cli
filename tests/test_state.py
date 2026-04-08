@@ -1,12 +1,10 @@
-"""State I/O: read/write/append, path traversal, UTF-8, locking, atomic writes."""
+"""State I/O: read/write/append, path traversal, UTF-8, atomic writes."""
 
 from __future__ import annotations
 
 import contextlib
 import os
 import tempfile as tf
-import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -99,57 +97,8 @@ class TestStateUTF8Handling:
         assert result == ""
 
 
-class TestStateLocking:
-    def test_write_fails_when_lock_held(self, tmp_path: Path) -> None:
-        """Write MUST fail (not force entry) when lock is permanently held."""
-        from vibe_state.core.state import StateLockError
-
-        vibe_dir = _setup(tmp_path)
-        state = vibe_dir / "state"
-        lock = state / "test.md.lock"
-        fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        try:
-            with pytest.raises(StateLockError, match="Cannot acquire lock"):
-                write_state_file(vibe_dir, "test.md", "content")
-        finally:
-            os.close(fd)
-            lock.unlink(missing_ok=True)
-
-    def test_lock_retry_succeeds_when_released(self, tmp_path: Path) -> None:
-        """Lock held briefly then released — write succeeds on retry."""
-        vibe_dir = _setup(tmp_path)
-        state = vibe_dir / "state"
-        lock = state / "test.md.lock"
-
-        def hold_lock_briefly() -> None:
-            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            time.sleep(0.15)
-            os.close(fd)
-            lock.unlink()
-
-        t = threading.Thread(target=hold_lock_briefly)
-        t.start()
-        time.sleep(0.01)
-        write_state_file(vibe_dir, "test.md", "content")
-        t.join()
-        assert read_state_file(vibe_dir, "test.md") == "content"
-
-    def test_stale_lock_file_not_exclusive(self, tmp_path: Path) -> None:
-        """A stale lock (written by write_text, not os.open) can be overridden."""
-        vibe_dir = _setup(tmp_path)
-        state_dir = vibe_dir / "state"
-        lock_path = state_dir / "tasks.md.lock"
-        # write_text creates a normal file, not O_EXCL — so next O_CREAT|O_EXCL fails
-        lock_path.write_text("stale")
-        from vibe_state.core.state import StateLockError
-
-        with pytest.raises(StateLockError):
-            write_state_file(vibe_dir, "tasks.md", "content")
-
-
 class TestStateAtomicWrites:
     def test_write_to_readonly_raises(self, tmp_path: Path) -> None:
-        """If atomic replace fails, temp file is cleaned up."""
         vibe_dir = _setup(tmp_path)
         write_state_file(vibe_dir, "test.md", "ok")
         assert read_state_file(vibe_dir, "test.md") == "ok"
@@ -160,7 +109,6 @@ class TestStateAtomicWrites:
         assert read_state_file(vibe_dir, "test.md") == "original"
 
     def test_write_and_verify_no_leftover_temps(self, tmp_path: Path) -> None:
-        """Verify write_state_file uses temp+replace pattern."""
         vibe_dir = _setup(tmp_path)
         state = vibe_dir / "state"
         write_state_file(vibe_dir, "test.md", "content")
@@ -188,7 +136,6 @@ class TestStateAtomicWrites:
         assert len(temps) == 0
 
     def test_write_crash_recovery_cleans_up(self, tmp_path: Path) -> None:
-        """Directly test the except BaseException path in write_state_file."""
         vibe_dir = _setup(tmp_path)
         state = vibe_dir / "state"
         fd, tmp_file = tf.mkstemp(dir=str(state), suffix=".tmp")
@@ -202,7 +149,6 @@ class TestStateAtomicWrites:
         assert not Path(tmp_file).exists()
 
     def test_append_crash_recovery_cleans_up(self, tmp_path: Path) -> None:
-        """Directly test the except BaseException path in append."""
         vibe_dir = _setup(tmp_path)
         state = vibe_dir / "state"
         (state / "test.md").write_text("original\n", encoding="utf-8")

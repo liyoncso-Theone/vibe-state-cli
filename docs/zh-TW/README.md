@@ -67,7 +67,7 @@ and are no longer needed:
 
 | 工具 | vibe 會幫你生成 | 怎麼偵測 |
 | ---- | --------------- | -------- |
-| Claude Code | `.claude/rules/vibe-standards.md` | 有 `.claude/` 資料夾 |
+| Claude Code | `.claude/rules/vibe-standards.md` + `.claude/skills/vibe-*/SKILL.md` | 有 `.claude/` 資料夾 |
 | Cursor | `.cursor/rules/vibe-standards.mdc` | 有 `.cursor/` 資料夾 |
 | GitHub Copilot | `.github/copilot-instructions.md` | 有 copilot 設定檔 |
 | Windsurf | `.windsurf/rules/vibe-standards.md` | 有 `.windsurf/` 資料夾 |
@@ -78,9 +78,36 @@ and are no longer needed:
 
 只生成有在用的工具的設定，不會多生垃圾。多個 adapter 同時啟用時，自動去除重複內容節省 Token。
 
+**所有 adapter 內建 Vibe Commands**：生成的每一份設定檔都包含「Vibe Commands」區塊，告訴 AI「當使用者說 `vibe sync`，直接在終端執行，不要解釋」。不需要任何外掛就能跨工具通用。
+
+**Claude Code 額外加分**：Claude adapter 會自動生成 [Agent Skills](https://agentskills.io/)（`/vibe-init`、`/vibe-start`、`/vibe-sync`、`/vibe-status`、`/vibe-adapt`），在 Claude Code、Cline 等支援開放 skill 標準的工具裡可以直接當 slash command 用。
+
 ## 搭配 Autoresearch 自動進化
 
-支援 [autoresearch](https://github.com/uditgoenka/autoresearch) 自動優化實驗。`vibe sync` 會偵測 git 歷史中的實驗 commit，記錄哪些成功保留、哪些回滾。模式可在 `.vibe/config.toml` 自訂。
+支援 [autoresearch](https://github.com/uditgoenka/autoresearch) — 自主迭代框架，對任何可量化的目標執行 **修改 → 驗證 → 保留/捨棄 → 重複** 循環（測試覆蓋率、效能、Lighthouse 分數、安全漏洞數等）。
+
+**怎麼搭配：**
+
+1. 在 AI 工具裡跑 autoresearch（例如 Claude Code 裡打 `/autoresearch`）
+2. Autoresearch 自動做原子修改、commit、跑 metric、決定保留或回滾
+3. 跑 `vibe sync` 時，自動掃 git 歷史中的實驗 commit，記錄到 `state/experiments.md`
+4. `vibe start` 顯示摘要：「5 kept, 2 reverted」
+
+**偵測的 commit pattern**（可在 `.vibe/config.toml` 自訂）：
+
+```text
+autoresearch:    experiment:    [autoresearch]    [experiment]    auto-research
+```
+
+**回滾偵測**：只有 `revert`、`reset`、`rollback` 等關鍵字出現在訊息**前綴**時才判定為 REVERTED（例如 `autoresearch: revert - metric dropped`），不會把 `experiment: fix revert payment issue` 誤判為回滾。
+
+**自訂 pattern**（`.vibe/config.toml`）：
+
+```toml
+[experiments]
+commit_patterns = ["autoresearch:", "experiment:", "[autoresearch]", "[experiment]", "auto-research"]
+revert_prefixes = ["revert", "reset", "rollback", "undo"]
+```
 
 ## 安全機制
 

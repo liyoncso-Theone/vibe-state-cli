@@ -35,15 +35,7 @@ class AntigravityAdapter(AdapterBase):
             lines += ["## Project", ""]
             lines += self._build_common_body(ctx)
 
-        lines += [
-            "## Vibe Workflow",
-            "",
-            "Read `.vibe/VIBE.md` for the full protocol.",
-            "**Checkpoint**: After each task, mark `[x]` in `state/tasks.md`"
-            " and append to `state/current.md`.",
-            "**Reality-First**: When memory conflicts with git, trust git.",
-            "",
-        ]
+        lines += [""]
         content = "\n".join(lines)
         return [self._write_file(ctx.project_root / "GEMINI.md", content)]
 

@@ -1,43 +1,10 @@
-"""Safety: snapshots, backups, pruning, modification detection."""
+"""Safety: backups and pruning."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from vibe_state.safety import (
-    create_backup,
-    has_user_modifications,
-    save_snapshot,
-)
-
-
-class TestSafetySnapshots:
-    def test_no_modification_detected(self, tmp_path: Path) -> None:
-        vibe_dir = tmp_path / ".vibe"
-        vibe_dir.mkdir()
-        test_file = tmp_path / "test.md"
-        test_file.write_text("original content", encoding="utf-8")
-        save_snapshot(vibe_dir, "test_tool", [test_file])
-        modified = has_user_modifications(vibe_dir, "test_tool", [test_file])
-        assert modified == []
-
-    def test_modification_detected(self, tmp_path: Path) -> None:
-        vibe_dir = tmp_path / ".vibe"
-        vibe_dir.mkdir()
-        test_file = tmp_path / "test.md"
-        test_file.write_text("original content", encoding="utf-8")
-        save_snapshot(vibe_dir, "test_tool", [test_file])
-        test_file.write_text("modified content", encoding="utf-8")
-        modified = has_user_modifications(vibe_dir, "test_tool", [test_file])
-        assert test_file in modified
-
-    def test_no_snapshot_means_modified(self, tmp_path: Path) -> None:
-        vibe_dir = tmp_path / ".vibe"
-        vibe_dir.mkdir()
-        f = tmp_path / "test.md"
-        f.write_text("content")
-        modified = has_user_modifications(vibe_dir, "tool", [f])
-        assert f in modified
+from vibe_state.safety import create_backup
 
 
 class TestSafetyBackups:

@@ -67,7 +67,7 @@ Your rules are preserved. Your files are not overwritten. You decide when to cle
 
 | Tool | What vibe generates | How it's detected |
 | ---- | ------------------- | ------------------- |
-| Claude Code | `.claude/rules/vibe-standards.md` | `.claude/` directory |
+| Claude Code | `.claude/rules/vibe-standards.md` + `.claude/skills/vibe-*/SKILL.md` | `.claude/` directory |
 | Cursor | `.cursor/rules/vibe-standards.mdc` | `.cursor/` directory |
 | GitHub Copilot | `.github/copilot-instructions.md` | existing copilot config |
 | Windsurf | `.windsurf/rules/vibe-standards.md` | `.windsurf/` directory |
@@ -78,9 +78,36 @@ Your rules are preserved. Your files are not overwritten. You decide when to cle
 
 Only detected tools get adapter files. When multiple adapters are active, duplicate content is automatically eliminated to save tokens.
 
+**Vibe Commands in every adapter**: All generated config files include a "Vibe Commands" section that tells the AI tool to execute `vibe init`, `vibe start`, `vibe sync`, `vibe status`, and `vibe adapt` as terminal commands when the user asks. This works across all AI tools without requiring tool-specific plugins.
+
+**Claude Code bonus**: The Claude adapter generates [Agent Skills](https://agentskills.io/) (`/vibe-init`, `/vibe-start`, `/vibe-sync`, `/vibe-status`, `/vibe-adapt`) so commands work as native slash commands in Claude Code, Cline, and any tool that supports the open skill standard.
+
 ## Autoresearch Integration
 
-Works with [autoresearch](https://github.com/uditgoenka/autoresearch) experiment loops. `vibe sync` detects experiment commits in your git history and records which ones were kept vs reverted in `state/experiments.md`. Patterns are configurable in `.vibe/config.toml`.
+Works with [autoresearch](https://github.com/uditgoenka/autoresearch) — an autonomous iteration framework that applies the **Modify → Verify → Keep/Discard → Repeat** loop to any measurable goal (test coverage, performance, Lighthouse score, security vulnerabilities, etc.).
+
+**How it works together:**
+
+1. You run autoresearch in your AI tool (e.g., `/autoresearch` in Claude Code)
+2. Autoresearch makes atomic changes, commits each one, runs your metric, and keeps or reverts
+3. When you run `vibe sync`, it scans git history for experiment commits and records them in `state/experiments.md`
+4. `vibe start` shows a summary: "5 kept, 2 reverted"
+
+**Detected commit patterns** (configurable in `.vibe/config.toml`):
+
+```text
+autoresearch:    experiment:    [autoresearch]    [experiment]    auto-research
+```
+
+**Revert detection**: Only flags a commit as REVERTED when keywords like `revert`, `reset`, `rollback` appear in the **prefix** of the message (e.g., `autoresearch: revert - metric dropped`), not in the body (e.g., `experiment: fix revert payment issue` is correctly detected as KEPT).
+
+**Custom patterns** in `.vibe/config.toml`:
+
+```toml
+[experiments]
+commit_patterns = ["autoresearch:", "experiment:", "[autoresearch]", "[experiment]", "auto-research"]
+revert_prefixes = ["revert", "reset", "rollback", "undo"]
+```
 
 ## Safety
 

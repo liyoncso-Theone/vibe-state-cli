@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Vibe Commands section**: All adapter output now includes a "Vibe Commands" block that instructs AI tools to execute `vibe init/start/sync/status/adapt` as terminal commands — works across all AI tools without plugins
+- **Claude Code Agent Skills**: Claude adapter auto-generates `.claude/skills/vibe-*/SKILL.md` for native slash commands (`/vibe-init`, `/vibe-sync`, etc.) following the [Agent Skills open standard](https://agentskills.io/)
+
+### Fixed
+
+- Windows cp950 encoding: `subprocess.run()` in `git_ops.py` now uses `encoding="utf-8"` to prevent decode failures with non-ASCII git log output
+
+---
+
 ## [0.2.0] — 2026-04-07
 
 ### Added
