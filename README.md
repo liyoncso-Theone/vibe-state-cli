@@ -18,89 +18,109 @@ It gives all your AI tools **one shared brain**.
 
 A `.vibe/` directory in your project holds your progress, tasks, and standards. When you switch tools, the new AI picks up exactly where the last one left off.
 
+## Quick start (2 minutes)
+
+### 1. Install (one time, global, never again)
+
+Open any terminal and run:
+
 ```bash
-vibe init      # Scan project, detect your AI tools, set up .vibe/
-vibe start     # Begin session — AI sees your latest progress
-vibe sync      # End session — save today's work from git
-vibe status    # Check state anytime
-vibe adapt     # Add or remove AI tool support
+pip install pipx
+pipx ensurepath
+pipx install vibe-state-cli
 ```
 
-## How it actually works
+Then **close the terminal and reopen it**.
+
+> **What is pipx?** It's like `pip install` but for CLI tools. It puts `vibe` in an isolated environment so it never conflicts with your project's packages. You only need to do this once — `vibe` will be available everywhere on your computer.
+>
+> **Important:** After `pipx ensurepath`, you must restart **all open terminals and your IDE**. The new PATH only takes effect in freshly opened windows.
+
+### 2. Initialize your project (one time per project)
+
+```bash
+cd your-project
+vibe init --lang zh-TW       # or: vibe init (for English)
+```
+
+This scans your project, creates `.vibe/`, and generates config files for your AI tools. If you already have CLAUDE.md or .cursorrules, vibe imports your rules and archives the originals safely.
+
+**This is the only time you need to type in a terminal.**
+
+### 3. Daily use — just talk to your AI
+
+From now on, everything happens through your AI chat. No terminal needed.
+
+| What you want | Say this to your AI |
+| ------------- | ------------------- |
+| Start your day | "vibe start" |
+| Save progress | "vibe sync" |
+| Check status | "vibe status" |
+
+Your AI reads the config file that vibe generated, sees these are terminal commands, and runs them for you.
+
+> **What if it says "command not found"?** Don't worry. The AI will fall back to reading your `.vibe/state/` files directly — it still gets all your context. This is by design.
+
+## How it works under the hood
 
 Every AI tool has a config file it reads automatically — CLAUDE.md for Claude, `.cursor/rules/*.mdc` for Cursor, GEMINI.md for Gemini, and so on.
 
-`vibe sync` and `vibe start` write a **compressed state summary** directly into each tool's config file. The AI reads its own config → sees your latest progress. No magic, no plugins, no API calls.
+When you say "vibe sync", the tool:
 
-```text
-You work with Claude → Claude writes checkpoints to .vibe/state/
-     ↓
-vibe sync → captures git log → compresses into 5-line summary → writes into all config files
-     ↓
-Switch to Cursor → Cursor loads its .mdc → sees what Claude did
-```
+1. Pulls your latest git commits
+2. Compresses them into a 5-line summary
+3. Writes that summary into **every** AI tool's config file
 
-**Git is the ground truth.** AI checkpoints (updating tasks.md) are best-effort — sometimes the AI forgets. But `vibe sync` pulls from git log, which never lies.
+Next time any AI starts, it loads its own config and sees your latest progress. No magic, no plugins, no API calls.
 
-## Migrating an existing project
-
-Already have CLAUDE.md, .cursorrules, or AGENTS.md? Just run `vibe init`.
-
-It extracts your rules, archives the originals to `.vibe/archive/legacy/` (nothing is deleted), and generates clean new config files.
-
-If your rules aren't in `- bullet` format, vibe warns you and **leaves your files untouched**.
+**Git is the only reliable record.** AI sometimes forgets to update tasks.md — that's OK. `vibe sync` captures git log, which never lies.
 
 ## AutoResearch — the experiment loop
 
 vibe pairs naturally with [autoresearch](https://github.com/uditgoenka/autoresearch), an autonomous optimization framework.
 
-vibe is the **memory layer**. autoresearch is the **evolution layer**. Together they form a closed loop:
+vibe is the **memory layer**. autoresearch is the **evolution layer**. Together:
 
 ```text
 /autoresearch:plan  → define what to optimize (coverage, speed, score)
-/autoresearch       → AI runs experiments: modify → test → keep or revert
-vibe sync           → auto-captures which experiments worked
-vibe start          → next session shows "5 kept, 2 reverted"
-                      → AI learns from past experiments
+/autoresearch       → AI runs experiments automatically
+vibe sync           → captures which experiments worked
+vibe start          → next session, AI learns from past experiments
 ```
 
-Every adapter output already tells the AI about autoresearch — when it sees a measurable goal, it knows to suggest `/autoresearch`.
+## Supported tools
 
-## What each tool gets
-
-| Tool | What vibe generates | What the AI sees |
-| ---- | ------------------- | ---------------- |
-| Claude Code | `CLAUDE.md` + rules + 5 slash commands | Full state via @import |
-| Cursor | `.cursor/rules/vibe-standards.mdc` | Standards + summary inline |
-| Windsurf | `.windsurf/rules/vibe-standards.md` | Standards + summary inline |
-| Cline | `.clinerules/01-vibe-standards.md` | Standards + summary inline |
-| Roo Code | `.roo/rules/01-vibe-standards.md` | Standards + summary inline |
-| Antigravity/Gemini | `GEMINI.md` | Full (with fallback for older versions) |
-| GitHub Copilot | `.github/copilot-instructions.md` | Summary only (Copilot can't read files) |
-| AGENTS.md | `AGENTS.md` | Full — the cross-tool standard |
+| Tool | What the AI sees |
+| ---- | ---------------- |
+| Claude Code | Full state + 5 slash commands (`/vibe-start`, etc.) |
+| Cursor | Standards + state summary (inline in rules file) |
+| Windsurf | Standards + state summary (inline) |
+| Cline | Standards + state summary (inline) |
+| Roo Code | Standards + state summary (inline) |
+| Antigravity/Gemini | Full state (with fallback for older versions) |
+| GitHub Copilot | Summary only (Copilot can't browse project files) |
 
 ## What it does NOT do
 
-- **Does not call any API.** Runs 100% offline. No telemetry.
-- **Does not touch your git.** Only reads — never commits or pushes.
-- **Does not lock you in.** `.vibe/` is plain Markdown. Delete it anytime.
-- **Does not replace your workflow.** You still talk to AI the same way. vibe just makes sure it remembers.
+- **No API calls.** Runs 100% offline. No telemetry, no network.
+- **No git writes.** Only reads git status — never commits or pushes.
+- **No lock-in.** `.vibe/` is plain Markdown. Delete it anytime.
+- **No workflow changes.** You still talk to AI the same way. vibe just makes sure it remembers.
 
-## Install
+## Updating
 
 ```bash
-pipx install vibe-state-cli
+pipx upgrade vibe-state-cli
 ```
 
 ## Safety
 
 - Adapter removal is **dry-run by default** — nothing deleted without `--confirm`
 - Migration is **two-phase**: copy all → verify → then delete originals
-- File writes are **atomic** with Windows retry for antivirus locks
+- File writes are **atomic** with retry for antivirus locks (Windows)
 - Symlink and NTFS Junction traversal **blocked**
 - Corrupt config **halts with error** — no silent defaults
-- Advisory lock for **concurrent writes** (CI environments)
-- Checkpoint compliance is honestly marked as **best-effort (~40-60%)**
+- Checkpoint honestly marked as **best-effort (~40-60%)**
 
 ## License
 
