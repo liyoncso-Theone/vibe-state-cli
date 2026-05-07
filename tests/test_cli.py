@@ -127,6 +127,65 @@ class TestCliInit:
         assert "Backed up" in result.output
         monkeypatch.undo()
 
+    def test_init_installs_post_commit_hook(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`vibe init` should install a post-commit hook that auto-syncs."""
+        monkeypatch.delenv("VIBE_SKIP_HOOK_INSTALL", raising=False)
+        monkeypatch.chdir(tmp_path)
+        _git_init(tmp_path)
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0
+        hook = tmp_path / ".git" / "hooks" / "post-commit"
+        assert hook.exists()
+        content = hook.read_text(encoding="utf-8")
+        assert "vibe-state-cli:auto-sync" in content
+        assert "vibe sync --no-refresh" in content
+
+    def test_init_no_hooks_skips_hook(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`vibe init --no-hooks` should NOT install the post-commit hook."""
+        monkeypatch.delenv("VIBE_SKIP_HOOK_INSTALL", raising=False)
+        monkeypatch.chdir(tmp_path)
+        _git_init(tmp_path)
+        result = runner.invoke(app, ["init", "--no-hooks"])
+        assert result.exit_code == 0
+        hook = tmp_path / ".git" / "hooks" / "post-commit"
+        assert not hook.exists()
+
+    def test_init_hook_install_is_idempotent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Re-running init --force should not duplicate the hook block."""
+        monkeypatch.delenv("VIBE_SKIP_HOOK_INSTALL", raising=False)
+        monkeypatch.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["init", "--force"])
+        hook = tmp_path / ".git" / "hooks" / "post-commit"
+        content = hook.read_text(encoding="utf-8")
+        # Marker should appear exactly once
+        assert content.count("vibe-state-cli:auto-sync\n") == 1
+
+    def test_init_appends_to_existing_hook(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If post-commit already exists, init should append (not overwrite)."""
+        monkeypatch.delenv("VIBE_SKIP_HOOK_INSTALL", raising=False)
+        monkeypatch.chdir(tmp_path)
+        _git_init(tmp_path)
+        hooks_dir = tmp_path / ".git" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        existing_hook = hooks_dir / "post-commit"
+        existing_hook.write_text(
+            "#!/usr/bin/env sh\necho 'user hook'\n", encoding="utf-8"
+        )
+        runner.invoke(app, ["init"])
+        content = existing_hook.read_text(encoding="utf-8")
+        assert "echo 'user hook'" in content  # Original preserved
+        assert "vibe-state-cli:auto-sync" in content  # Vibe block appended
+
     def test_init_creates_internal_gitignore(self, tmp_path: Path) -> None:
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.chdir(tmp_path)
@@ -204,6 +263,33 @@ class TestCliInit:
         assert "任務" in tasks or "Tasks" in tasks  # zh-TW or fallback
         monkeypatch.undo()
 
+    def test_init_force_preserves_existing_lang(self, tmp_path: Path) -> None:
+        """`vibe init --force` without --lang should keep the previously chosen lang."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        # Initial init in zh-TW
+        runner.invoke(app, ["init", "--lang", "zh-TW"])
+        config_before = load_config(tmp_path / ".vibe")
+        assert config_before.vibe.lang == "zh-TW"
+        # Force reinit without --lang should preserve zh-TW
+        result = runner.invoke(app, ["init", "--force"])
+        assert result.exit_code == 0
+        config_after = load_config(tmp_path / ".vibe")
+        assert config_after.vibe.lang == "zh-TW"
+        mp.undo()
+
+    def test_init_force_explicit_lang_overrides(self, tmp_path: Path) -> None:
+        """`vibe init --force --lang en` should override existing zh-TW."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init", "--lang", "zh-TW"])
+        result = runner.invoke(app, ["init", "--force", "--lang", "en"])
+        assert result.exit_code == 0
+        assert load_config(tmp_path / ".vibe").vibe.lang == "en"
+        mp.undo()
+
     def test_init_invalid_lang_fallback(self, tmp_path: Path) -> None:
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.chdir(tmp_path)
@@ -217,6 +303,20 @@ class TestCliInit:
 # ── Status scenarios ──
 
 
+class TestCliVersion:
+    def test_version_flag_long(self) -> None:
+        result = runner.invoke(app, ["--version"])
+        assert result.exit_code == 0
+        assert "vibe-state-cli" in result.output
+        # Match the canonical version pattern (e.g. "vibe-state-cli 0.3.4")
+        assert any(ch.isdigit() for ch in result.output)
+
+    def test_version_flag_short(self) -> None:
+        result = runner.invoke(app, ["-V"])
+        assert result.exit_code == 0
+        assert "vibe-state-cli" in result.output
+
+
 class TestCliStatus:
     def test_status_without_init(self, tmp_path: Path) -> None:
         monkeypatch = pytest.MonkeyPatch()
@@ -225,6 +325,92 @@ class TestCliStatus:
         assert result.exit_code == 1
         assert "vibe init" in result.output
         monkeypatch.undo()
+
+    def test_status_never_synced_shows_never(self, tmp_path: Path) -> None:
+        """Fresh init, no sync yet — should show 'never synced'."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "never synced" in result.output
+        # Health should be FRESH (just inited, < 3 days)
+        assert "FRESH" in result.output
+        mp.undo()
+
+    def test_status_shows_fresh_when_just_synced(self, tmp_path: Path) -> None:
+        """After sync with no new commits, should show 'state is current' + FRESH."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        # Need at least one commit for git to have a HEAD
+        (tmp_path / "README.md").write_text("hi\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init"], cwd=tmp_path, capture_output=True
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        runner.invoke(app, ["sync"])
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "state is current" in result.output
+        assert "FRESH" in result.output
+        mp.undo()
+
+    def test_status_shows_commits_behind(self, tmp_path: Path) -> None:
+        """After sync, new commits should appear as 'N commits behind'."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "README.md").write_text("hi\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init"], cwd=tmp_path, capture_output=True
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        runner.invoke(app, ["sync"])
+        # Add 3 new commits after sync
+        for i in range(3):
+            (tmp_path / f"f{i}.txt").write_text(str(i))
+            subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"feat {i}"], cwd=tmp_path, capture_output=True
+            )
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "3 commits behind" in result.output
+        mp.undo()
+
+    def test_status_zh_tw_locale(self, tmp_path: Path) -> None:
+        """When config.vibe.lang = zh-TW, status output should be Chinese."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init", "--lang", "zh-TW"])
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "生命週期" in result.output
+        assert "上次同步" in result.output
+        assert "狀態健康度" in result.output
+        # Should NOT contain English labels
+        assert "Lifecycle" not in result.output
+        mp.undo()
+
+    def test_status_adapter_missing(self, tmp_path: Path) -> None:
+        """Deleting an adapter file should show 'missing' in status."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        # Delete AGENTS.md (default adapter)
+        (tmp_path / "AGENTS.md").unlink()
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "missing" in result.output
+        mp.undo()
 
 
 # ── Start scenarios ──
@@ -241,6 +427,32 @@ class TestCliStart:
         result = runner.invoke(app, ["start"])
         assert result.exit_code == 0
         assert "Auto-compacting" in result.output
+        mp.undo()
+
+    def test_start_auto_syncs_new_commits(self, tmp_path: Path) -> None:
+        """Start should pull new commits into state without requiring manual sync."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "README.md").write_text("hi\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init"], cwd=tmp_path, capture_output=True
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])  # First start syncs the init commit
+        # Add 2 new commits without running sync
+        for i in range(2):
+            (tmp_path / f"f{i}.txt").write_text(str(i))
+            subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"feat {i}"], cwd=tmp_path, capture_output=True
+            )
+        # Second start should auto-sync those 2 commits
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0
+        assert "Auto-synced" in result.output
+        assert "2 new commits" in result.output
         mp.undo()
 
     def test_start_with_experiments(self, tmp_path: Path) -> None:
@@ -339,6 +551,130 @@ class TestCliSync:
         assert "... and" in current  # Truncated at 20
         mp.undo()
 
+    def test_sync_note_appends_to_progress_summary(self, tmp_path: Path) -> None:
+        """sync --note should write a dated semantic note inside Progress Summary."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        result = runner.invoke(
+            app, ["sync", "--note", "three-tier adapter refactor for token efficiency"]
+        )
+        assert result.exit_code == 0
+        assert "Note added" in result.output
+        current = read_state_file(tmp_path / ".vibe", "current.md")
+        assert "three-tier adapter refactor for token efficiency" in current
+        # Note should sit inside Progress Summary, before Open Issues
+        progress_idx = current.find("Progress Summary")
+        note_idx = current.find("three-tier adapter")
+        issues_idx = current.find("Open Issues")
+        assert progress_idx < note_idx
+        if issues_idx > 0:
+            assert note_idx < issues_idx
+        mp.undo()
+
+    def test_sync_note_zh_tw_section(self, tmp_path: Path) -> None:
+        """sync --note should also recognize zh-TW heading 進度摘要."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init", "--lang", "zh-TW"])
+        runner.invoke(app, ["start"])
+        result = runner.invoke(app, ["sync", "--note", "三層 adapter 重構"])
+        assert result.exit_code == 0
+        current = read_state_file(tmp_path / ".vibe", "current.md")
+        assert "三層 adapter 重構" in current
+        progress_idx = current.find("進度摘要")
+        note_idx = current.find("三層 adapter")
+        assert progress_idx >= 0
+        assert progress_idx < note_idx
+        mp.undo()
+
+    def test_sync_no_refresh_silent_when_lifecycle_not_active(
+        self, tmp_path: Path
+    ) -> None:
+        """sync --no-refresh in READY state should silently skip (used by hook).
+
+        After `vibe init --force`, lifecycle is READY until the user runs
+        `vibe start`. The git hook fires sync after every commit, so the
+        first commit post-init must not spam .hook.log with state errors.
+        """
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])  # Lifecycle is now READY (no `start`)
+        result = runner.invoke(app, ["sync", "--no-refresh"])
+        # Silent skip — no error, no output
+        assert result.exit_code == 0
+        assert "Cannot run" not in result.output
+        # Without --no-refresh, READY should still error (preserve plain `sync` UX)
+        result_loud = runner.invoke(app, ["sync"])
+        assert result_loud.exit_code == 1
+        assert "Cannot run" in result_loud.output
+        mp.undo()
+
+    def test_sync_no_refresh_suppresses_clear_checklist(self, tmp_path: Path) -> None:
+        """sync --no-refresh should not print C.L.E.A.R. checklist (used by hook).
+
+        The hook redirects sync output to .hook.log; the checklist is for
+        humans, so leaking it into the log file is noise.
+        """
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "f.txt").write_text("init")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"],
+            cwd=tmp_path, capture_output=True,
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        (tmp_path / "f.txt").write_text("v2")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feat: change"],
+            cwd=tmp_path, capture_output=True,
+        )
+        result = runner.invoke(app, ["sync", "--no-refresh"])
+        assert result.exit_code == 0
+        # Plain sync should print the checklist; --no-refresh should not.
+        assert "C.L.E.A.R" not in result.output
+        assert "Core Logic" not in result.output
+        mp.undo()
+
+    def test_sync_no_refresh_skips_adapter_update(self, tmp_path: Path) -> None:
+        """sync --no-refresh should not modify adapter files (used by git hook)."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "f.txt").write_text("init")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"],
+            cwd=tmp_path, capture_output=True,
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        agents_md = tmp_path / "AGENTS.md"
+        before_mtime = agents_md.stat().st_mtime
+        # Add a new commit
+        (tmp_path / "f.txt").write_text("v2")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feat: change"],
+            cwd=tmp_path, capture_output=True,
+        )
+        result = runner.invoke(app, ["sync", "--no-refresh"])
+        assert result.exit_code == 0
+        # AGENTS.md should NOT have been touched
+        assert agents_md.stat().st_mtime == before_mtime
+        # State file should still be updated
+        current = read_state_file(tmp_path / ".vibe", "current.md")
+        assert "feat: change" in current
+        mp.undo()
+
     def test_sync_includes_diff_stat(self, tmp_path: Path) -> None:
         mp = pytest.MonkeyPatch()
         mp.chdir(tmp_path)
@@ -415,6 +751,44 @@ class TestCliAdapt:
         result = runner.invoke(app, ["adapt", "--add", "fake_tool"])
         assert result.exit_code == 1
         monkeypatch.undo()
+
+    def test_adapt_lang_switches_config(self, tmp_path: Path) -> None:
+        """`vibe adapt --lang zh-TW` should change config.toml lang and report old → new."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])  # default en
+        assert load_config(tmp_path / ".vibe").vibe.lang == "en"
+        result = runner.invoke(app, ["adapt", "--lang", "zh-TW"])
+        assert result.exit_code == 0
+        assert "en" in result.output and "zh-TW" in result.output
+        assert load_config(tmp_path / ".vibe").vibe.lang == "zh-TW"
+        # Status should now render in Chinese
+        status_result = runner.invoke(app, ["status"])
+        assert "生命週期" in status_result.output
+        mp.undo()
+
+    def test_adapt_lang_invalid(self, tmp_path: Path) -> None:
+        """Unsupported lang should exit 1 with a clear error."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["adapt", "--lang", "ja"])
+        assert result.exit_code == 1
+        assert "not a supported language" in result.output
+        mp.undo()
+
+    def test_adapt_lang_already_set_noop(self, tmp_path: Path) -> None:
+        """Setting lang to current value should be a friendly no-op."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init", "--lang", "zh-TW"])
+        result = runner.invoke(app, ["adapt", "--lang", "zh-TW"])
+        assert result.exit_code == 0
+        assert "already" in result.output
+        mp.undo()
 
     def test_add_duplicate(self, tmp_path: Path) -> None:
         mp = pytest.MonkeyPatch()

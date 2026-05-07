@@ -10,3 +10,5 @@ vibe init
 ```
 
 Report the result.
+
+<!-- vibe-state-cli:managed -->

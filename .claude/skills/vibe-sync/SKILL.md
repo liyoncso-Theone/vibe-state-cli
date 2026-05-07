@@ -10,3 +10,5 @@ vibe sync
 ```
 
 Report the sync result.
+
+<!-- vibe-state-cli:managed -->

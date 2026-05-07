@@ -10,3 +10,5 @@ vibe status
 ```
 
 Report the status.
+
+<!-- vibe-state-cli:managed -->

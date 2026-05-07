@@ -6,6 +6,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.4] — 2026-05-07
+
+> Closes the cross-session continuity gap: state used to silently fall behind
+> git unless you remembered to run `vibe sync`. Now the existing five commands
+> carry that load themselves — no new commands.
+
+### Added
+
+- **`vibe status` health dashboard** — surfaces last-sync age, commits behind, per-adapter sync state, and a FRESH/STALE/VERY-STALE classification. Output is i18n-aware (en + zh-TW; auto-selects from `config.vibe.lang`)
+- **`vibe start` auto-sync** — pulls new commits since the last cursor before loading state, so a fresh session always reflects current git. No more "I forgot to sync"
+- **`vibe sync --note "..."`** — appends a dated semantic note inside the Progress Summary section (recognizes both English `Progress Summary` and zh-TW `進度摘要` headings). Captures the *why* that commit messages alone don't preserve
+- **`vibe sync --no-refresh`** — skips adapter rewrites; used by the new git post-commit hook to avoid working-tree noise after each commit
+- **`vibe init` installs git post-commit hook by default** — every commit auto-syncs state into `current.md` via `vibe sync --no-refresh`. `--no-hooks` opts out. Hook failures log silently to `.vibe/state/.hook.log` and never block your commit
+- **`VIBE_SKIP_HOOK_INSTALL` env var** — honored by `vibe init` so test suites and CI can suppress the hook side-effect
+- **`vibe adapt --lang <en|zh-TW>`** — lightweight interface-language switch. Updates `.vibe/config.toml` only; existing state files keep their original language, adapter files don't regenerate. The right tool when you just want to flip `vibe status` between English and Chinese without re-running `init --force`
+
+### Changed
+
+- `perform_git_sync` extracted to `_helpers.py` as a `SyncResult`-returning helper. Both `vibe sync` and `vibe start` now share the same git → state pipeline
+- Adapter freshness detection examines all managed files (not just the first), so adapters writing multiple files (e.g. claude → CLAUDE.md + `.claude/rules/*.md` + skills) report fresh as long as any managed file carries the current summary marker
+
+### Fixed
+
+- `vibe init --force` no longer silently reverts a zh-TW project back to English. The new `--lang` resolution is: explicit flag > existing config on `--force` > default `en`
+- `vibe sync --no-refresh` no longer prints the C.L.E.A.R. review checklist. The hook redirects sync output to `.vibe/state/.hook.log`; the checklist is for humans, so leaking it into a log file (and hitting cp950 encoding mojibake on Windows along the way) was pure noise
+- `vibe sync --no-refresh` silently skips when lifecycle isn't ACTIVE. After `vibe init --force`, lifecycle is READY until the user runs `vibe start`; the post-commit hook used to spam `.hook.log` with "Cannot run 'vibe sync' in READY state" errors on every commit. Plain `vibe sync` (no flag) still errors loudly to preserve the manual UX
+
+### Tests
+
+- 22 new tests, 230 total passing. New `tests/conftest.py` autouse fixture sets `VIBE_SKIP_HOOK_INSTALL=1` so `subprocess.run git commit` inside tests stays deterministic; hook-behavior tests delete the env var in their own scope
+
+---
+
 ## [0.3.0] — 2026-04-08
 
 ### Added

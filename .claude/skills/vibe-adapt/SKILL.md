@@ -10,3 +10,5 @@ vibe adapt
 ```
 
 Report what changed.
+
+<!-- vibe-state-cli:managed -->

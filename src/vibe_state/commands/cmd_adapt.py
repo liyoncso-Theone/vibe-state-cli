@@ -22,6 +22,12 @@ def adapt(
     sync_adapters: bool = typer.Option(False, "--sync", help="Re-sync all adapter files"),
     confirm: bool = typer.Option(False, help="Confirm destructive operations"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview changes without applying"),
+    lang: str = typer.Option(
+        "",
+        "--lang",
+        help="Switch interface language (en or zh-TW). Updates config only;"
+        " state files and adapter files are not regenerated.",
+    ),
 ) -> None:
     """Manage AI/IDE adapter files."""
     from vibe_state.adapters.registry import get_adapter
@@ -31,6 +37,28 @@ def adapt(
     require_lifecycle(get_vibe_dir(), "adapt")
 
     config = load_config(vibe_dir)
+
+    if lang:
+        from vibe_state.core.templates import SUPPORTED_LANGS
+
+        if lang not in SUPPORTED_LANGS:
+            console.print(
+                f"[red]Error:[/] '{lang}' is not a supported language."
+                f" Supported: {', '.join(sorted(SUPPORTED_LANGS))}."
+            )
+            raise typer.Exit(1)
+        if config.vibe.lang == lang:
+            console.print(f"[yellow]Language is already {lang}.[/]")
+            return
+        old = config.vibe.lang
+        config.vibe.lang = lang
+        save_config(vibe_dir, config)
+        console.print(f"[green]Language switched:[/] {old} → {lang}")
+        console.print(
+            "[dim]Existing state files keep their original language."
+            " New `vibe init` runs will use the new language.[/]"
+        )
+        return
 
     if list_adapters:
         from vibe_state.adapters.registry import get_all_adapter_names
@@ -130,4 +158,4 @@ def adapt(
         console.print(f"\n[bold]Total:[/] {total_files} adapter file(s) synced.")
         return
 
-    console.print("[yellow]Specify --add, --remove, --list, or --sync.[/]")
+    console.print("[yellow]Specify --add, --remove, --list, --sync, or --lang.[/]")

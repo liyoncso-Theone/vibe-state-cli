@@ -61,6 +61,21 @@ Your AI reads the config file that vibe generated, sees these are terminal comma
 
 > **What if it says "command not found"?** Don't worry. The AI will fall back to reading your `.vibe/state/` files directly — it still gets all your context. This is by design.
 
+### Useful options
+
+vibe does the right thing by default. These flags help when you want something specific:
+
+```bash
+vibe sync --note "..."        # capture the *why* (architecture decisions, intent)
+vibe adapt --lang zh-TW       # switch interface language any time (en / zh-TW)
+vibe init --no-hooks          # skip auto-installing the git post-commit hook
+vibe sync --close             # end the project (writes a retrospective)
+vibe sync --compact           # archive completed tasks
+vibe --version                # show version
+```
+
+Run `vibe <command> --help` for the full option list, or see the [User Guide](docs/USER-GUIDE.md) for detailed reference.
+
 ## How it works under the hood
 
 Every AI tool has a config file it reads automatically — CLAUDE.md for Claude, `.cursor/rules/*.mdc` for Cursor, GEMINI.md for Gemini, and so on.
