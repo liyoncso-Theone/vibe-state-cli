@@ -1,135 +1,195 @@
-# vibe-state-cli 使用者指南
+# vibe-state-cli User Guide
 
-> 從安裝到日常使用的完整教學。
+> Complete reference from install to daily use, covering every command flag.
+>
+> [繁體中文版](zh-TW/USER-GUIDE.md) | [README](../README.md)
 
 ---
 
-## 安裝
+## Install
 
 ```bash
+pip install pipx
+pipx ensurepath
 pipx install vibe-state-cli
 ```
 
-> `pipx` 會自動建隔離環境。如果還沒裝：`pip install pipx`
+> After install, **close and reopen your terminal** so the new PATH takes effect.
+> `pipx` puts `vibe` in an isolated environment so it never conflicts with project packages.
+
+Verify:
+
+```bash
+vibe --version       # or vibe -V
+```
 
 ---
 
-## 快速開始（3 分鐘）
+## Quick start (3 minutes)
 
 ```bash
 cd my-project
-vibe init              # 初始化 .vibe/（自動偵測語言、框架、AI 工具）
-vibe start             # 開工（載入狀態、驗證 git、顯示摘要）
-# ... 開始工作 ...
-vibe sync              # 收工（附加 git 狀態、C.L.E.A.R. 審查）
+vibe init              # Initialize .vibe/ (auto-detects language, framework, AI tools, installs git hook)
+vibe start             # Start session (loads state, auto-syncs new commits, shows summary)
+# ... work ...
+vibe sync              # End session (appends git activity, runs C.L.E.A.R. checklist)
 ```
 
-就這樣。三個指令涵蓋 90% 的使用場景。
+That's it. Three commands cover 90% of usage.
 
 ---
 
-## 五個指令詳解
+## Five commands in detail
 
 ### 1. `vibe init`
 
-**做什麼**：掃描專案，生成 `.vibe/` 目錄和 AI 工具的原生設定檔。
+**What it does**: scans your project, generates `.vibe/`, creates AI tool config files, and installs a git post-commit hook (auto-syncs after every commit).
 
 ```bash
-vibe init                    # 英文模板
-vibe init --lang zh-TW       # 繁體中文模板
-vibe init --force             # 強制重新初始化（也可用於重開已結案專案）
+vibe init                      # Default English template (or read existing config when --force)
+vibe init --lang zh-TW         # Traditional Chinese template
+vibe init --force              # Force reinitialize (also reopens closed projects)
+vibe init --no-hooks           # Skip git post-commit hook installation
 ```
 
-**自動偵測**：
+**Auto-detects**:
 
-- 語言/框架：讀取 `pyproject.toml`、`package.json`、`Cargo.toml` 等
-- AI 工具：掃描 `.claude/`、`.cursor/`、`.windsurf/` 等目錄
-- Git：偵測 `.git/` 是否存在
+- Language/framework: reads `pyproject.toml`, `package.json`, `Cargo.toml`, etc.
+- AI tools: scans `.claude/`, `.cursor/`, `.windsurf/`, etc.
+- Git: detects `.git/` (skips hook install if absent)
 
-**生成的檔案**：
+**`--force` behavior** (fixed in v0.3.4):
+- Backs up the existing `.vibe/` to a timestamped directory
+- When `--lang` is not specified, **preserves** the existing config's lang (no longer silently reverts to en)
+- If the git hook is already installed, skips re-install (idempotent)
+
+**Generated files**:
 
 ```text
 .vibe/
-├── config.toml          # 設定（adapter 開關、compact 閾值等）
+├── config.toml          # Settings (adapter on/off, compact threshold, lang)
 └── state/
-    ├── current.md       # 當前進度
-    ├── tasks.md         # 任務清單
-    ├── architecture.md  # 技術堆疊
-    ├── standards.md     # 編碼規範
-    ├── experiments.md   # autoresearch 實驗紀錄
-    └── archive.md       # 冷藏庫
+    ├── current.md       # Latest progress
+    ├── tasks.md         # Task checklist
+    ├── architecture.md  # Tech stack
+    ├── standards.md     # Coding rules
+    ├── experiments.md   # Autoresearch experiment log
+    └── archive.md       # Cold storage
 ```
-
-> 行為規則（Workflow、Boundaries、Vibe Commands）直接寫在 AGENTS.md 中，不另設 VIBE.md。
 
 ### 2. `vibe start`
 
-**做什麼**：每日開工時執行。載入狀態、驗證 git、自動壓縮過長檔案、顯示 Rich 格式的摘要面板。
+**What it does**: run at the start of each session. **As of v0.3.4, automatically syncs commits behind the cursor** (no need to remember `vibe sync`), loads state, auto-compacts oversized files, prints a summary panel.
 
 ```bash
 vibe start
 ```
 
-**輸出範例**：
+**Sample output**:
 
 ```text
+Auto-synced: 5 new commits since last session
+
 ┌────────────── vibe start ──────────────┐
-│  Progress      Sync [2026-04-07] ...   │
-│  Git           3 uncommitted changes   │
-│  Open issues   (none)                  │
-│  Top tasks                             │
-│                  1. Build auth module  │
-│                  2. Write tests        │
-│  Experiments   5 kept, 2 reverted      │
-└──────────────── Session loaded ────────┘
+│  Progress      [2026-05-07] feat: ...   │
+│  Git           3 uncommitted changes    │
+│  Open issues   (none)                   │
+│  Top tasks                              │
+│                  1. Build auth module   │
+│                  2. Write tests         │
+│  Experiments   5 kept, 2 reverted       │
+└──────────────── Session loaded ─────────┘
 ```
 
 ### 3. `vibe sync`
 
-**做什麼**：附加 git 狀態到 `state/current.md`，偵測 autoresearch 實驗 commit，輸出 C.L.E.A.R. 審查清單。
+**What it does**: appends git activity to `state/current.md`, advances the sync cursor, detects autoresearch experiment commits, prints the C.L.E.A.R. review checklist.
 
 ```bash
-vibe sync                # 日常同步
-vibe sync --compact      # 同步 + 壓縮（歸檔已完成任務）
-vibe sync --close        # 結案（最終同步 + 壓縮 + 回顧報告）
+vibe sync                              # Daily sync
+vibe sync --note "three-tier adapter refactor — token efficiency"   # Add semantic note
+vibe sync --compact                    # Sync + compact (archive completed tasks)
+vibe sync --close                      # Close project (final sync + compact + retrospective)
+vibe sync --no-refresh                 # Skip adapter regeneration (used by git hook)
 ```
 
-**C.L.E.A.R. 審查清單**（僅有實際變更時顯示）：
+**What is `--note` for?**
+
+Git commit messages typically describe **what** was done, but the **why** — architectural decisions, intent, tradeoffs — usually only lives in conversation history and disappears when the session ends. `--note` writes that semantic layer into `state/current.md`'s Progress Summary section (not the sync block), so future AI sessions see the why, not just the what.
+
+```bash
+vibe sync --note "Split adapter into three modes (full/slim/compact) because Cursor cannot read AGENTS.md — must inline rules in .mdc"
+```
+
+**C.L.E.A.R. review checklist** (only shown when there are real changes and not in hook mode):
 
 ```text
-[C] Core Logic   — 核心邏輯正確嗎？邊界條件？
-[L] Layout       — 結構/命名符合 standards.md？
-[E] Evidence     — 有測試輸出或 API 回應作為證據？
-[A] Access       — 有硬編碼密鑰或權限漏洞？
-[R] Refactor     — 明顯的技術債或效能問題？
+[C] Core Logic   — Is the core logic correct? Edge cases?
+[L] Layout       — Structure/naming follows standards.md?
+[E] Evidence     — Test output or API response as proof?
+[A] Access       — Any hardcoded secrets or permission holes?
+[R] Refactor     — Obvious tech debt or performance issues?
 ```
 
 ### 4. `vibe status`
 
-**做什麼**：隨時查看專案狀態（任何 lifecycle 狀態都可用）。
+**What it does**: view project state at any time (allowed in any lifecycle state). **As of v0.3.4 it's a health dashboard** showing days since last sync, commits behind, and per-adapter freshness.
 
 ```bash
 vibe status
 ```
 
+**Sample output (English UI when `config.vibe.lang = "en"`)**:
+
+```text
+┌────────── vibe status ──────────┐
+│  Lifecycle      ACTIVE            │
+│  Last sync      30 days ago (48 commits behind) │
+│  State health   VERY STALE — run `vibe sync` urgently │
+│  Adapter sync                    │
+│                 claude    ⚠ stale │
+│                 agents_md ⚠ stale │
+│  Git            enabled           │
+│  Content lang   en                │
+│  Tasks          0 pending, 0 done, 0 stale │
+└──────────────────────────────────┘
+```
+
+**Health classification**:
+
+| Level | Condition |
+|------|------|
+| FRESH | < 3 days AND < 5 commits |
+| STALE | 3-14 days OR 5-30 commits |
+| VERY STALE | ≥ 14 days OR > 30 commits |
+
 ### 5. `vibe adapt`
 
-**做什麼**：管理 AI/IDE adapter 設定檔。
+**What it does**: manage AI/IDE adapter settings, **and as of v0.3.4 also switches interface language**.
 
 ```bash
-vibe adapt --list                          # 查看所有 adapter（ON/OFF）
-vibe adapt --add cursor                    # 啟用 Cursor adapter
-vibe adapt --add claude                    # 啟用 Claude Code adapter
-vibe adapt --sync --confirm                # 重新生成所有已啟用 adapter 的檔案
-vibe adapt --remove cursor --dry-run       # 預覽將刪除的檔案
-vibe adapt --remove cursor --confirm       # 確認刪除（自動備份）
+vibe adapt --list                          # List all adapters (ON/OFF)
+vibe adapt --add cursor                    # Enable Cursor adapter
+vibe adapt --add claude                    # Enable Claude Code adapter
+vibe adapt --sync --confirm                # Regenerate all enabled adapter files
+vibe adapt --remove cursor --dry-run       # Preview files to delete
+vibe adapt --remove cursor --confirm       # Confirm deletion (auto-backup)
+vibe adapt --lang zh-TW                    # Switch interface language to Chinese
+vibe adapt --lang en                       # Switch to English
 ```
+
+**`--lang` vs `vibe init --force --lang`**:
+
+| Operation | Scope | When to use |
+|-----------|-------|-------------|
+| `vibe adapt --lang` | Updates only `config.toml`'s lang field | You only want to switch UI language |
+| `vibe init --force --lang` | Backs up `.vibe/`, regenerates adapters, resets lifecycle | Full reinit |
 
 ---
 
-## 智慧遷移
+## Smart migration
 
-如果你的專案已經有 `CLAUDE.md`、`AGENTS.md`、`.cursorrules` 等 AI 設定檔，`vibe init` 會自動偵測並匯入你的規則：
+If your project already has `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, etc., `vibe init` detects and imports your rules:
 
 ```text
 $ vibe init
@@ -139,54 +199,52 @@ Found 2 existing config file(s):
   - CLAUDE.md
   - .cursorrules
 Imported 9 rules into .vibe/state/standards.md
-
-The following legacy config files have been imported into .vibe/
-and are no longer needed:
-  - CLAUDE.md
-  - .cursorrules
+Archived 2 legacy file(s) to .vibe/archive/legacy/
 ```
 
-你的規則會被完整保留到 `.vibe/state/standards.md`。原始檔案不會被覆蓋或刪除，什麼時候清理由你決定。
+**Two-phase safe migration**: copy all to archive → verify → only then delete originals. If a file has no extractable bullet rules (paragraph-form prose only), it's preserved with a warning instead of being archived.
 
 ---
 
-## 日常工作流
+## Daily workflows
 
-### 單人開發
+### Solo dev
 
 ```text
-每天早上：vibe start
+Every morning: vibe start         # Auto-syncs last night's commits
   ↓
-工作（AI 自動 checkpoint — 標記 [x] + 更新 current.md）
+Work (each commit auto-syncs into state via git hook)
   ↓
-每天收工：vibe sync
+Optional: vibe sync --note "..."  # Capture architectural decisions
   ↓
-每週五：vibe sync --compact
+Every evening: vibe sync          # See C.L.E.A.R. review checklist
   ↓
-專案結束：vibe sync --close
+Friday: vibe sync --compact       # Archive completed tasks
+  ↓
+Project end: vibe sync --close    # Write retrospective, lock state
 ```
 
-### 多 Agent 切換
+### Multi-agent switching
 
 ```text
 Morning: Claude Code terminal
-  ↓ vibe start → AI 讀取 CLAUDE.md → 看到 "Session Start" → 讀 .vibe/state/
-  ↓ 工作...
-  ↓ vibe sync
+  ↓ vibe start → Claude reads CLAUDE.md → sees "Session Start" → reads .vibe/state/
+  ↓ work...
+  ↓ commit (hook auto-syncs)
 
 Afternoon: Cursor IDE
-  ↓ vibe start → Cursor 載入 .mdc → 看到 "Session Start" → 讀 .vibe/state/
-  ↓ 無縫銜接 morning 的進度
+  ↓ vibe start → Cursor loads .mdc → sees injected ## Last Session → has full context
+  ↓ Picks up morning's work seamlessly
 ```
 
-### 搭配 Autoresearch
+### With Autoresearch
 
-[Autoresearch](https://github.com/uditgoenka/autoresearch) 是自主迭代框架，對任何可量化的目標自動跑 **修改 → 驗證 → 保留/捨棄 → 重複** 循環。
+[Autoresearch](https://github.com/uditgoenka/autoresearch) is an autonomous iteration framework that runs **modify → verify → keep/discard → repeat** on any measurable goal.
 
-**基本流程：**
+**Basic flow**:
 
 ```bash
-# Step 1: 在 Claude Code 中啟動 autoresearch
+# Step 1: Start autoresearch in Claude Code
 /autoresearch
 Goal: Improve test coverage to 95%
 Scope: src/**/*.py
@@ -194,48 +252,48 @@ Metric: pytest --cov --cov-report=term | grep TOTAL | awk '{print $4}'
 Direction: higher_is_better
 Verify: pytest --cov --cov-fail-under=95
 
-# Step 2: Autoresearch 自動跑迴圈
-#   → 每次做一個原子修改 → commit → 跑 metric
-#   → metric 改善 → KEEP（保留 commit）
-#   → metric 退步 → REVERT（回滾 commit，但歷史保留）
+# Step 2: Autoresearch runs the loop automatically
+#   → Make atomic change → commit → measure metric
+#   → Metric improved → KEEP commit
+#   → Metric regressed → REVERT (history preserved)
 
-# Step 3: 完成後用 vibe 記錄
-vibe sync    # 掃描 git log → 偵測實驗 commit → 寫入 state/experiments.md
-vibe start   # 顯示摘要：5 kept, 3 reverted
+# Step 3: Record with vibe (the git hook already auto-runs sync, but manual works too)
+vibe sync    # Scans git log → detects experiment commits → writes state/experiments.md
+vibe start   # Shows summary: 5 kept, 3 reverted
 ```
 
-**Autoresearch 的完整指令：**
+**Autoresearch full command list**:
 
-| 指令                     | 用途                                                    |
-| ------------------------ | ------------------------------------------------------- |
-| `/autoresearch`          | 主要迭代迴圈（有界/無界）                               |
-| `/autoresearch:plan`     | 互動式嚮導：設定 Goal、Scope、Metric、Direction、Verify |
-| `/autoresearch:debug`    | 科學除錯法：假設 → 驗證 → 修正                          |
-| `/autoresearch:fix`      | 自動修錯迴圈（每輪修一個，失敗自動回滾）                |
-| `/autoresearch:security` | STRIDE 威脅模型 + OWASP Top 10 + 紅隊審計               |
-| `/autoresearch:learn`    | 自動生成/更新文件                                       |
-| `/autoresearch:ship`     | 8 階段通用上線流程                                      |
-| `/autoresearch:predict`  | 5 人格專家群體分析                                      |
-| `/autoresearch:reason`   | 對抗式精煉（生成 → 批判 → 綜合 → 裁決）                 |
-| `/autoresearch:scenario` | 邊界案例 + 衍生情境探索                                 |
+| Command                  | Purpose                                                |
+| ------------------------ | ------------------------------------------------------ |
+| `/autoresearch`          | Main iteration loop (bounded/unbounded)                |
+| `/autoresearch:plan`     | Interactive wizard: Goal, Scope, Metric, Verify        |
+| `/autoresearch:debug`    | Scientific bug hunting: hypothesis → test → fix        |
+| `/autoresearch:fix`      | Auto-fix loop (one fix per round, auto-revert on fail) |
+| `/autoresearch:security` | STRIDE threat model + OWASP Top 10 + red team audit    |
+| `/autoresearch:learn`    | Auto-generate/update docs                              |
+| `/autoresearch:ship`     | 8-phase universal shipping flow                        |
+| `/autoresearch:predict`  | 5-persona expert swarm analysis                        |
+| `/autoresearch:reason`   | Adversarial refinement (generate → critique → judge)   |
+| `/autoresearch:scenario` | Edge case + derivative scenario exploration            |
 
-**vibe-state-cli 的偵測機制：**
+**vibe-state-cli detection mechanism**:
 
-`vibe sync` 掃描 git log，根據 commit message 的 pattern 判定是否為實驗 commit：
+`vibe sync` scans git log and matches commit messages against patterns to flag experiment commits:
 
 ```text
-# 預設偵測的 pattern（不分大小寫）
+# Default patterns (case-insensitive)
 autoresearch:    experiment:    [autoresearch]    [experiment]    auto-research
 ```
 
-回滾偵測只看訊息**前綴**的第一個詞是否為 `revert`、`reset`、`rollback`、`undo`：
+Revert detection only checks the **prefix** (first word after the pattern):
 
 ```text
-autoresearch: revert - metric dropped    → [REVERTED] ✓ 正確
-experiment: fix revert payment issue     → [KEPT]     ✓ 正確（revert 在 body 不在前綴）
+autoresearch: revert - metric dropped    → [REVERTED] ✓ correct
+experiment: fix revert payment issue     → [KEPT]     ✓ correct (revert is in body, not prefix)
 ```
 
-**自訂 pattern**（`.vibe/config.toml`）：
+**Customize patterns** in `.vibe/config.toml`:
 
 ```toml
 [experiments]
@@ -243,49 +301,78 @@ commit_patterns = ["autoresearch:", "experiment:", "[autoresearch]", "[experimen
 revert_prefixes = ["revert", "reset", "rollback", "undo"]
 ```
 
-**適用範圍**：不只是程式碼。Autoresearch 可以優化任何可量測的東西 — 測試覆蓋率 ↑、Lighthouse 分數 ↑、打包大小 ↓、延遲 ↓、安全漏洞 ↓。
+---
+
+## Git Hook (v0.3.4)
+
+`vibe init` installs `.git/hooks/post-commit` automatically, which runs `vibe sync --no-refresh` after every commit. That means:
+
+- **You don't need to remember manual sync** — state updates after every commit
+- **Failures never block your commit** — hook uses `|| true`, errors silently log to `.vibe/state/.hook.log`
+- **No working-tree noise** — `--no-refresh` skips adapter regeneration, so you don't get dirty changes right after committing
+- **Silent skip in READY state** — first commit after `vibe init --force` won't spam the log (lifecycle hasn't reached ACTIVE yet)
+
+Don't want the hook?
+
+```bash
+vibe init --no-hooks                    # Skip during init
+# Or after install: manually delete the vibe block in .git/hooks/post-commit
+# (between the two markers)
+```
 
 ---
 
-## 支援的 AI 工具
+## Supported AI tools
 
-| 工具                            | Adapter 名稱  | 自動偵測標誌                           |
+| Tool                            | Adapter name  | Auto-detect signal                     |
 | ------------------------------- | ------------- | -------------------------------------- |
-| AGENTS.md（通用標準）           | `agents_md`   | `AGENTS.md` 已存在                     |
-| Claude Code                     | `claude`      | `.claude/` 或 `CLAUDE.md`（含 skills） |
-| Google Antigravity / Gemini CLI | `antigravity` | `GEMINI.md` 或 `.gemini/`              |
-| Cursor                          | `cursor`      | `.cursor/` 或 `.cursorrules`           |
+| AGENTS.md (universal standard)  | `agents_md`   | `AGENTS.md` exists                     |
+| Claude Code                     | `claude`      | `.claude/` or `CLAUDE.md` (with skills) |
+| Google Antigravity / Gemini CLI | `antigravity` | `GEMINI.md` or `.gemini/`              |
+| Cursor                          | `cursor`      | `.cursor/` or `.cursorrules`           |
 | GitHub Copilot (VS Code)        | `copilot`     | `.github/copilot-instructions.md`      |
-| Windsurf                        | `windsurf`    | `.windsurf/` 或 `.windsurfrules`       |
+| Windsurf                        | `windsurf`    | `.windsurf/` or `.windsurfrules`       |
 | Cline                           | `cline`       | `.clinerules/`                         |
 | Roo Code                        | `roo`         | `.roo/`                                |
 
-**Token 節約**：當 AGENTS.md + 其他 adapter 同時啟用時，其他 adapter 自動切換 slim 模式（只放 frontmatter + 指向 AGENTS.md），避免重複內容浪費 token。
+**Token savings**: when AGENTS.md + other adapters are co-enabled, the others switch to slim mode (frontmatter + pointer to AGENTS.md only) to avoid duplicate content.
 
-**Vibe Commands**：所有 adapter 生成的設定檔都包含「Vibe Commands」區塊，告訴 AI 工具：「當使用者說 `vibe sync`，直接在終端執行該命令，不要解釋或實作它。」這個機制不需要外掛，跨所有 AI 工具通用。
+**Vibe Commands**: every adapter's config file includes a "Vibe Commands" block instructing the AI: "When the user says `vibe sync`, run that command in the terminal — don't explain or reimplement it." Works across all AI tools without plugins.
 
-**Claude Code Skills**：Claude adapter 額外生成 `.claude/skills/vibe-*/SKILL.md`，讓 `/vibe-init`、`/vibe-start`、`/vibe-sync`、`/vibe-status`、`/vibe-adapt` 可以直接當 slash command 使用。此格式遵循 [Agent Skills 開放標準](https://agentskills.io/)，同時適用於 Claude Code、Cline 等支援該標準的工具。
+**Claude Code Skills**: the claude adapter additionally generates `.claude/skills/vibe-*/SKILL.md`, making `/vibe-init`, `/vibe-start`, `/vibe-sync`, `/vibe-status`, `/vibe-adapt` directly usable as slash commands. This format follows the [Agent Skills open standard](https://agentskills.io/).
+
+---
+
+## Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `VIBE_SKIP_HOOK_INSTALL` | Set to `1` to skip `vibe init`'s hook install (used by test suites and CI) |
 
 ---
 
 ## FAQ
 
-### .vibe/ 應該 commit 到 git 嗎？
+### Should `.vibe/` be committed to git?
 
-**是的**。`.vibe/` 是專案的共享大腦，團隊成員都應該看到。`.vibe/backups/` 已在 `.gitignore` 中排除。
+**Yes**. `.vibe/` is the project's shared brain, meant for the team to see. `.vibe/backups/`, `.vibe/state/.hook.log`, and `.vibe/state/*.lock` are excluded by `.gitignore`.
 
-### 不用 git 可以嗎？
+### Can I use this without git?
 
-可以。`vibe init` 會自動偵測，非 git 專案的 sync 會跳過 git 操作。
+Yes. `vibe init` auto-detects; non-git projects skip git operations and the hook isn't installed.
 
-### 可以同時用 Claude Code 和 Cursor 嗎？
+### Can I use Claude Code and Cursor at the same time?
 
-可以。`vibe adapt --add claude` + `vibe adapt --add cursor` + `vibe adapt --sync`。兩邊各自載入自己的設定檔，共享 `.vibe/state/`。
+Yes. `vibe adapt --add claude` + `vibe adapt --add cursor` + `vibe adapt --sync`. Each tool loads its own config, and they share `.vibe/state/`.
 
-### experiments.md 是什麼？
+### `vibe status` says STALE — what do I do?
 
-是 autoresearch 實驗的自動記錄。`vibe sync` 會偵測 git log 中帶有 `autoresearch:` 或 `[autoresearch]` 前綴的 commit，記錄為 KEPT 或 REVERTED。
+`vibe sync` writes the missing commits to state. Or simpler: just `vibe start`, which auto-syncs.
 
-### 在 IDE 裡打 `vibe sync` AI 不理我？
+### What is `experiments.md`?
 
-所有 adapter 生成的設定檔都包含「Vibe Commands」指令，告訴 AI 直接執行終端命令。如果 AI 還是不理解，可以說「請在終端執行 `vibe sync`」。如果你用 Claude Code 或 Cline，可以直接打 `/vibe-sync`（slash command）。
+Autoresearch experiments auto-recorded. `vibe sync` detects commits prefixed with `autoresearch:` or `[autoresearch]` and logs them as KEPT or REVERTED.
+
+### The AI doesn't respond when I type `vibe sync` in the IDE?
+
+Every adapter config includes a "Vibe Commands" instruction telling the AI to execute terminal commands directly. If the AI still doesn't get it, say "Please run `vibe sync` in the terminal." With Claude Code or Cline you can also type `/vibe-sync` (slash command).
