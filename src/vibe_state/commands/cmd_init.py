@@ -20,7 +20,10 @@ from vibe_state.commands._helpers import (
 
 @app.command()
 def init(
-    lang: str = typer.Option("en", help="Template language: en, zh-TW"),
+    lang: str = typer.Option(
+        "",
+        help="Template language: en, zh-TW (default: existing config on --force, else 'en').",
+    ),
     force: bool = typer.Option(False, help="Force reinitialize (also reopens closed projects)"),
     no_hooks: bool = typer.Option(
         False,
@@ -47,6 +50,18 @@ def init(
 
     if not force:
         require_lifecycle(get_vibe_dir(), "init")
+
+    # Resolve language: explicit --lang wins; on --force, fall back to existing
+    # config.toml so a zh-TW project doesn't silently revert to English.
+    if not lang and force and (vibe_dir / "config.toml").exists():
+        try:
+            from vibe_state.config import load_config as _load_existing
+
+            lang = _load_existing(vibe_dir).vibe.lang
+        except Exception:
+            pass
+    if not lang:
+        lang = "en"
 
     # Validate language
     from vibe_state.core.templates import SUPPORTED_LANGS

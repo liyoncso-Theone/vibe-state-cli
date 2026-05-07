@@ -125,8 +125,9 @@ def sync(
         if count:
             console.print(f"[dim]Refreshed {count} adapter file(s).[/]")
 
-    # ── C.L.E.A.R. checklist (only when there were actual changes) ──
-    if not has_changes:
+    # ── C.L.E.A.R. checklist (only when there were actual changes,
+    # and never in hook mode where output is appended to .hook.log) ──
+    if not has_changes or no_refresh:
         return
     console.print()
     console.print(Panel(

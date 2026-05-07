@@ -26,9 +26,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `perform_git_sync` extracted to `_helpers.py` as a `SyncResult`-returning helper. Both `vibe sync` and `vibe start` now share the same git → state pipeline
 - Adapter freshness detection examines all managed files (not just the first), so adapters writing multiple files (e.g. claude → CLAUDE.md + `.claude/rules/*.md` + skills) report fresh as long as any managed file carries the current summary marker
 
+### Fixed
+
+- `vibe init --force` no longer silently reverts a zh-TW project back to English. The new `--lang` resolution is: explicit flag > existing config on `--force` > default `en`
+- `vibe sync --no-refresh` no longer prints the C.L.E.A.R. review checklist. The hook redirects sync output to `.vibe/state/.hook.log`; the checklist is for humans, so leaking it into a log file (and hitting cp950 encoding mojibake on Windows along the way) was pure noise
+
 ### Tests
 
-- 13 new tests, 221 total passing. New `tests/conftest.py` autouse fixture sets `VIBE_SKIP_HOOK_INSTALL=1` so `subprocess.run git commit` inside tests stays deterministic; hook-behavior tests delete the env var in their own scope
+- 18 new tests, 226 total passing. New `tests/conftest.py` autouse fixture sets `VIBE_SKIP_HOOK_INSTALL=1` so `subprocess.run git commit` inside tests stays deterministic; hook-behavior tests delete the env var in their own scope
 
 ---
 

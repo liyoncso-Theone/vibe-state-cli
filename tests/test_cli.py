@@ -263,6 +263,33 @@ class TestCliInit:
         assert "任務" in tasks or "Tasks" in tasks  # zh-TW or fallback
         monkeypatch.undo()
 
+    def test_init_force_preserves_existing_lang(self, tmp_path: Path) -> None:
+        """`vibe init --force` without --lang should keep the previously chosen lang."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        # Initial init in zh-TW
+        runner.invoke(app, ["init", "--lang", "zh-TW"])
+        config_before = load_config(tmp_path / ".vibe")
+        assert config_before.vibe.lang == "zh-TW"
+        # Force reinit without --lang should preserve zh-TW
+        result = runner.invoke(app, ["init", "--force"])
+        assert result.exit_code == 0
+        config_after = load_config(tmp_path / ".vibe")
+        assert config_after.vibe.lang == "zh-TW"
+        mp.undo()
+
+    def test_init_force_explicit_lang_overrides(self, tmp_path: Path) -> None:
+        """`vibe init --force --lang en` should override existing zh-TW."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init", "--lang", "zh-TW"])
+        result = runner.invoke(app, ["init", "--force", "--lang", "en"])
+        assert result.exit_code == 0
+        assert load_config(tmp_path / ".vibe").vibe.lang == "en"
+        mp.undo()
+
     def test_init_invalid_lang_fallback(self, tmp_path: Path) -> None:
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.chdir(tmp_path)
@@ -562,6 +589,36 @@ class TestCliSync:
         note_idx = current.find("三層 adapter")
         assert progress_idx >= 0
         assert progress_idx < note_idx
+        mp.undo()
+
+    def test_sync_no_refresh_suppresses_clear_checklist(self, tmp_path: Path) -> None:
+        """sync --no-refresh should not print C.L.E.A.R. checklist (used by hook).
+
+        The hook redirects sync output to .hook.log; the checklist is for
+        humans, so leaking it into the log file is noise.
+        """
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "f.txt").write_text("init")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"],
+            cwd=tmp_path, capture_output=True,
+        )
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        (tmp_path / "f.txt").write_text("v2")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feat: change"],
+            cwd=tmp_path, capture_output=True,
+        )
+        result = runner.invoke(app, ["sync", "--no-refresh"])
+        assert result.exit_code == 0
+        # Plain sync should print the checklist; --no-refresh should not.
+        assert "C.L.E.A.R" not in result.output
+        assert "Core Logic" not in result.output
         mp.undo()
 
     def test_sync_no_refresh_skips_adapter_update(self, tmp_path: Path) -> None:
