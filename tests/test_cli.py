@@ -752,6 +752,44 @@ class TestCliAdapt:
         assert result.exit_code == 1
         monkeypatch.undo()
 
+    def test_adapt_lang_switches_config(self, tmp_path: Path) -> None:
+        """`vibe adapt --lang zh-TW` should change config.toml lang and report old → new."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])  # default en
+        assert load_config(tmp_path / ".vibe").vibe.lang == "en"
+        result = runner.invoke(app, ["adapt", "--lang", "zh-TW"])
+        assert result.exit_code == 0
+        assert "en" in result.output and "zh-TW" in result.output
+        assert load_config(tmp_path / ".vibe").vibe.lang == "zh-TW"
+        # Status should now render in Chinese
+        status_result = runner.invoke(app, ["status"])
+        assert "生命週期" in status_result.output
+        mp.undo()
+
+    def test_adapt_lang_invalid(self, tmp_path: Path) -> None:
+        """Unsupported lang should exit 1 with a clear error."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        result = runner.invoke(app, ["adapt", "--lang", "ja"])
+        assert result.exit_code == 1
+        assert "not a supported language" in result.output
+        mp.undo()
+
+    def test_adapt_lang_already_set_noop(self, tmp_path: Path) -> None:
+        """Setting lang to current value should be a friendly no-op."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init", "--lang", "zh-TW"])
+        result = runner.invoke(app, ["adapt", "--lang", "zh-TW"])
+        assert result.exit_code == 0
+        assert "already" in result.output
+        mp.undo()
+
     def test_add_duplicate(self, tmp_path: Path) -> None:
         mp = pytest.MonkeyPatch()
         mp.chdir(tmp_path)
