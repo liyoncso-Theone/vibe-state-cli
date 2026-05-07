@@ -1,2 +1,4 @@
 # vibe-state-cli internals (do not commit)
 backups/
+state/*.lock
+state/.hook.log

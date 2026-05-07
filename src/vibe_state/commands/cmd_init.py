@@ -12,6 +12,7 @@ from vibe_state.commands._helpers import (
     check_dangerous_directory,
     console,
     get_vibe_dir,
+    install_post_commit_hook,
     require_lifecycle,
     sanitize_name,
 )
@@ -21,6 +22,11 @@ from vibe_state.commands._helpers import (
 def init(
     lang: str = typer.Option("en", help="Template language: en, zh-TW"),
     force: bool = typer.Option(False, help="Force reinitialize (also reopens closed projects)"),
+    no_hooks: bool = typer.Option(
+        False,
+        "--no-hooks",
+        help="Skip git post-commit hook installation (auto-sync after every commit).",
+    ),
 ) -> None:
     """Initialize .vibe/ directory in the current project."""
     check_dangerous_directory()
@@ -199,6 +205,23 @@ def init(
             emitted = adapter.emit(ctx)
             adapter_files.extend(str(f.relative_to(Path.cwd())) for f in emitted)
 
+    # Phase 6: Install git post-commit hook (auto-sync) unless opted out.
+    # VIBE_SKIP_HOOK_INSTALL is honored so test suites can disable side effects
+    # without changing every test invocation.
+    import os
+
+    hook_line = ""
+    skip_hook = no_hooks or os.environ.get("VIBE_SKIP_HOOK_INSTALL")
+    if not skip_hook and scan.has_git:
+        hook_status = install_post_commit_hook(Path.cwd())
+        if hook_status in ("installed", "appended"):
+            hook_line = (
+                "\n[dim]Git hook installed: every commit auto-syncs state."
+                " Disable with `--no-hooks`.[/dim]"
+            )
+        elif hook_status == "already":
+            hook_line = "\n[dim]Git hook already present.[/dim]"
+
     # Summary
     console.print()
     adapter_summary = (
@@ -210,7 +233,7 @@ def init(
         f"Frameworks: {', '.join(scan.frameworks) or 'none detected'}\n"
         f"Git: {'yes' if scan.has_git else 'no'}\n"
         f"Adapters: {', '.join(selected_adapters)}\n\n"
-        f"Generated files:\n{adapter_summary}\n\n"
+        f"Generated files:\n{adapter_summary}{hook_line}\n\n"
         f"[dim]Tip: commit .vibe/ to git so your team shares the same brain.[/dim]\n"
         f"[dim]Next: run [bold]vibe start[/bold] to begin your session.[/dim]",
         title="vibe init",

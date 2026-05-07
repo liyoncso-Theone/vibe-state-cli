@@ -13,6 +13,7 @@ from vibe_state.commands._helpers import (
     extract_latest_progress,
     extract_section_items,
     get_vibe_dir,
+    perform_git_sync,
     refresh_adapters,
     require_lifecycle,
 )
@@ -20,7 +21,7 @@ from vibe_state.commands._helpers import (
 
 @app.command()
 def start() -> None:
-    """Load state, validate against git, auto-compact, output status summary."""
+    """Load state, auto-sync new commits, auto-compact, output status summary."""
     from vibe_state.config import load_config
     from vibe_state.core.compactor import compact_tasks
     from vibe_state.core.git_ops import get_status, git_available
@@ -40,6 +41,20 @@ def start() -> None:
     missing = validate_state_dir(vibe_dir)
     if missing:
         console.print(f"[yellow]Warning:[/] Missing state files: {', '.join(missing)}")
+
+    # Auto-sync: pull any new commits since last sync into state.
+    # This makes `vibe sync` optional — start always loads a current state.
+    auto_sync = perform_git_sync(vibe_dir, label="Sync")
+    if auto_sync.commits_synced > 0:
+        console.print(
+            f"[green]Auto-synced:[/] {auto_sync.commits_synced} new commits"
+            f" since last session"
+        )
+        if auto_sync.experiments_kept or auto_sync.experiments_reverted:
+            console.print(
+                f"[cyan]Experiments:[/] {auto_sync.experiments_kept} kept,"
+                f" {auto_sync.experiments_reverted} reverted"
+            )
 
     # Auto-compact if any file exceeds threshold
     threshold = config.state.compact_threshold
