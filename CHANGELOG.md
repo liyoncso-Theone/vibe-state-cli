@@ -6,6 +6,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.4] — 2026-05-07
+
+> Closes the cross-session continuity gap: state used to silently fall behind
+> git unless you remembered to run `vibe sync`. Now the existing five commands
+> carry that load themselves — no new commands.
+
+### Added
+
+- **`vibe status` health dashboard** — surfaces last-sync age, commits behind, per-adapter sync state, and a FRESH/STALE/VERY-STALE classification. Output is i18n-aware (en + zh-TW; auto-selects from `config.vibe.lang`)
+- **`vibe start` auto-sync** — pulls new commits since the last cursor before loading state, so a fresh session always reflects current git. No more "I forgot to sync"
+- **`vibe sync --note "..."`** — appends a dated semantic note inside the Progress Summary section (recognizes both English `Progress Summary` and zh-TW `進度摘要` headings). Captures the *why* that commit messages alone don't preserve
+- **`vibe sync --no-refresh`** — skips adapter rewrites; used by the new git post-commit hook to avoid working-tree noise after each commit
+- **`vibe init` installs git post-commit hook by default** — every commit auto-syncs state into `current.md` via `vibe sync --no-refresh`. `--no-hooks` opts out. Hook failures log silently to `.vibe/state/.hook.log` and never block your commit
+- **`VIBE_SKIP_HOOK_INSTALL` env var** — honored by `vibe init` so test suites and CI can suppress the hook side-effect
+
+### Changed
+
+- `perform_git_sync` extracted to `_helpers.py` as a `SyncResult`-returning helper. Both `vibe sync` and `vibe start` now share the same git → state pipeline
+- Adapter freshness detection examines all managed files (not just the first), so adapters writing multiple files (e.g. claude → CLAUDE.md + `.claude/rules/*.md` + skills) report fresh as long as any managed file carries the current summary marker
+
+### Tests
+
+- 13 new tests, 221 total passing. New `tests/conftest.py` autouse fixture sets `VIBE_SKIP_HOOK_INSTALL=1` so `subprocess.run git commit` inside tests stays deterministic; hook-behavior tests delete the env var in their own scope
+
+---
+
 ## [0.3.0] — 2026-04-08
 
 ### Added
