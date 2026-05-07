@@ -11,11 +11,9 @@ enabled = [
     "claude",
     "agents_md",
 ]
-auto_detect = true
 
 [git]
 enabled = true
-auto_commit = false
 
 [experiments]
 commit_patterns = [
