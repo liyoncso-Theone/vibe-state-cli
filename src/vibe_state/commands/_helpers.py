@@ -43,6 +43,15 @@ def _verbose_callback(value: bool) -> None:
         logger.debug("Verbose mode enabled")
 
 
+def _version_callback(value: bool) -> None:
+    """Typer callback for --version flag."""
+    if value:
+        from vibe_state import __version__
+
+        typer.echo(f"vibe-state-cli {__version__}")
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="vibe",
     help="Model-agnostic AI-human collaboration state management CLI.",
@@ -53,6 +62,14 @@ app = typer.Typer(
 @app.callback()
 def main(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug output"),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
 ) -> None:
     """Model-agnostic AI-human collaboration state management CLI."""
     _verbose_callback(verbose)

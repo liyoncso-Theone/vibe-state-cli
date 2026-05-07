@@ -276,6 +276,20 @@ class TestCliInit:
 # ── Status scenarios ──
 
 
+class TestCliVersion:
+    def test_version_flag_long(self) -> None:
+        result = runner.invoke(app, ["--version"])
+        assert result.exit_code == 0
+        assert "vibe-state-cli" in result.output
+        # Match the canonical version pattern (e.g. "vibe-state-cli 0.3.4")
+        assert any(ch.isdigit() for ch in result.output)
+
+    def test_version_flag_short(self) -> None:
+        result = runner.invoke(app, ["-V"])
+        assert result.exit_code == 0
+        assert "vibe-state-cli" in result.output
+
+
 class TestCliStatus:
     def test_status_without_init(self, tmp_path: Path) -> None:
         monkeypatch = pytest.MonkeyPatch()
