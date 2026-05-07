@@ -6,6 +6,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.5] — 2026-05-07
+
+> Two real-world bugs surfaced within hours of v0.3.4 going live, plus a
+> defensive pass that closed four more quiet bug surfaces (big-repo
+> latency, submodules/worktrees, upgrade UX, write failures). Everything
+> ships together as one solid release.
+
+### Fixed
+
+- **`UnicodeEncodeError` on Windows cp950/cp936/cp932 consoles** — `vibe status` (and any other Rich-rendered output) crashed with `UnicodeEncodeError: 'cp950' codec can't encode character '✓'` on Windows CMD, PowerShell 5, and CJK-default Windows installs. The `✓ ⚠ ✗` markers and Unicode box-drawing characters that Rich emits cannot be encoded by legacy code pages. Fixed by reconfiguring `sys.stdout` and `sys.stderr` to UTF-8 at CLI entry — users no longer need to set `PYTHONIOENCODING=utf-8` themselves. Reported in production by an external team within hours of the v0.3.4 release.
+
+- **`.vibe/state/.hook.log` showed up untracked in `git status`** — the post-commit hook installed by `vibe init` writes its sync output to `.vibe/state/.hook.log`, but `.vibe/.gitignore` only listed `backups/`. Every commit therefore created an untracked file that lingered in `git status`. Reported by the ProBrain team. Fixed by:
+  - Extracting `.gitignore` management into `ensure_internal_gitignore()` helper that idempotently appends missing entries (`backups/`, `state/*.lock`, `state/.hook.log`) without overwriting user additions.
+  - `vibe init --force` *and* `vibe start` now run this helper, so existing projects upgrading to v0.3.5 automatically gain coverage for the newly-introduced runtime files — no `--force` re-init required.
+
+- **Post-commit hook now runs in the background** — on big repos `vibe sync --no-refresh` can take several seconds (git log + diff stat over many commits), and the original hook ran it synchronously, so the commit prompt felt frozen. The installed hook now uses the POSIX `(... &)` background-subshell pattern: the commit returns immediately, sync completes asynchronously, and output still streams to `.vibe/state/.hook.log`. Works under git-bash on Windows.
+
+- **Submodules and linked worktrees can now install the hook** — when `.git` is a *file* (gitlink) pointing to `<parent>/.git/modules/<sub>` (submodule) or `<main>/.git/worktrees/<name>` (linked worktree), the previous installer treated it as "no git" and silently skipped hook installation. Added `_resolve_git_dir()` that follows the `gitdir:` pointer and lands the hook in the correct per-checkout hooks directory. Broken gitlinks (target missing) still fail closed as `no_git` rather than raising.
+
+- **`vibe init` no longer crashes on rare write failures** — read-only filesystems, antivirus-locked files, or disk-full conditions used to surface as a Python traceback. Both `install_post_commit_hook()` and `ensure_internal_gitignore()` calls are now wrapped: on `OSError` we print a yellow warning and continue, so init still produces a working `.vibe/` and the user gets actionable feedback instead of a stack trace.
+
+### Hardened
+
+- `ensure_internal_gitignore()` no longer leaves a stray leading newline when the existing `.gitignore` is empty or whitespace-only.
+
+### Tests
+
+- 19 new tests, 249 total passing. `TestCliEncoding` covers the UTF-8 forcing logic with mocked cp950 streams; integration tests verify the `init` wiring for fresh and pre-existing `.gitignore` files; `TestEnsureInternalGitignore` adds 7 unit-level tests covering all helper branches; `TestStartUpgradesGitignore` covers the auto-upgrade path on `vibe start`; `TestHookSubmoduleAndWorktree` covers gitlink resolution and the background-execution shape of the hook script; `TestInitGracefulFailures` covers both wrapped failure paths via mocked `OSError`.
+
+---
+
 ## [0.3.4] — 2026-05-07
 
 > Closes the cross-session continuity gap: state used to silently fall behind

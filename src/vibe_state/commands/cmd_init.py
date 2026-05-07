@@ -11,6 +11,7 @@ from vibe_state.commands._helpers import (
     app,
     check_dangerous_directory,
     console,
+    ensure_internal_gitignore,
     get_vibe_dir,
     install_post_commit_hook,
     require_lifecycle,
@@ -196,13 +197,17 @@ def init(
     save_config(vibe_dir, config)
     write_state(vibe_dir, LifecycleState.READY)
 
-    # Write internal .gitignore for backups
-    internal_gitignore = vibe_dir / ".gitignore"
-    if not internal_gitignore.exists():
-        internal_gitignore.write_text(
-            "# vibe-state-cli internals (do not commit)\nbackups/\n",
-            encoding="utf-8",
-            newline="\n",
+    # Ensure .vibe/.gitignore covers every runtime artifact (backups,
+    # advisory locks, hook log). Idempotent: appends missing entries
+    # without overwriting user-added lines, so existing projects upgrading
+    # to a newer vibe automatically get coverage for newly-introduced
+    # internal files (e.g. state/.hook.log added in v0.3.4).
+    try:
+        ensure_internal_gitignore(vibe_dir)
+    except OSError as e:
+        console.print(
+            f"[yellow]Warning:[/] could not write .vibe/.gitignore ({e})."
+            " You may want to add 'state/.hook.log' manually."
         )
 
     # Phase 5: Emit adapter files
@@ -228,7 +233,14 @@ def init(
     hook_line = ""
     skip_hook = no_hooks or os.environ.get("VIBE_SKIP_HOOK_INSTALL")
     if not skip_hook and scan.has_git:
-        hook_status = install_post_commit_hook(Path.cwd())
+        try:
+            hook_status = install_post_commit_hook(Path.cwd())
+        except OSError as e:
+            hook_status = "error"
+            hook_line = (
+                f"\n[yellow]Warning:[/] could not install git post-commit hook"
+                f" ({e}). Auto-sync disabled — run `vibe sync` manually."
+            )
         if hook_status in ("installed", "appended"):
             hook_line = (
                 "\n[dim]Git hook installed: every commit auto-syncs state."

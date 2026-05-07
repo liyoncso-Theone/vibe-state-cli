@@ -133,32 +133,117 @@ def refresh_adapters(vibe_dir: Path) -> int:
     return total
 
 
+# ── Internal .gitignore management ──
+
+# Files that vibe writes at runtime and must never be committed.
+# Keep this list in sync with what hook scripts and atomic writes produce.
+_INTERNAL_GITIGNORE_ENTRIES: tuple[str, ...] = (
+    "backups/",
+    "state/*.lock",
+    "state/.hook.log",
+)
+
+
+def ensure_internal_gitignore(vibe_dir: Path) -> tuple[bool, list[str]]:
+    """Make sure .vibe/.gitignore covers every runtime artifact vibe produces.
+
+    Idempotent: if the file is missing, it's written from a template.
+    If it exists, we append only the entries that aren't already present —
+    user-added lines are preserved untouched.
+
+    Returns: (was_changed, entries_added)
+    """
+    gi_path = vibe_dir / ".gitignore"
+
+    if not gi_path.exists():
+        gi_path.parent.mkdir(parents=True, exist_ok=True)
+        body = "# vibe-state-cli internals (do not commit)\n" + "\n".join(
+            _INTERNAL_GITIGNORE_ENTRIES
+        ) + "\n"
+        gi_path.write_text(body, encoding="utf-8", newline="\n")
+        return True, list(_INTERNAL_GITIGNORE_ENTRIES)
+
+    try:
+        existing = gi_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False, []
+
+    existing_lines = {ln.strip() for ln in existing.splitlines()}
+    missing = [e for e in _INTERNAL_GITIGNORE_ENTRIES if e not in existing_lines]
+    if not missing:
+        return False, []
+
+    # Avoid a stray leading newline when the existing file is empty or
+    # whitespace-only (rstrip() == "").
+    prefix = existing.rstrip()
+    new_content = (prefix + "\n" if prefix else "") + "\n".join(missing) + "\n"
+    gi_path.write_text(new_content, encoding="utf-8", newline="\n")
+    return True, missing
+
+
 # ── Git post-commit hook (auto-sync) ──
 
 _HOOK_MARKER_START = "# vibe-state-cli:auto-sync"
 _HOOK_MARKER_END = "# vibe-state-cli:auto-sync:end"
 
+# Hook runs sync in a backgrounded subshell so the commit prompt returns
+# immediately even on big repos where `vibe sync` takes several seconds.
+# `(... &)` is POSIX-portable and works under git-bash on Windows.
 _HOOK_BLOCK = f"""\
 {_HOOK_MARKER_START}
 # Auto-installed by `vibe init`. Keeps state/current.md in sync with git.
+# Runs in background so your commit prompt is never blocked.
 # To disable, delete this block (between the start/end markers) or run
-# `vibe init --force --no-hooks`. Failures are logged silently and never
-# block your commit.
+# `vibe init --force --no-hooks`. Failures are logged silently to
+# .vibe/state/.hook.log and never block your commit.
 if command -v vibe >/dev/null 2>&1 && [ -d .vibe ]; then
-  vibe sync --no-refresh >> .vibe/state/.hook.log 2>&1 || true
+  (vibe sync --no-refresh >> .vibe/state/.hook.log 2>&1 &) >/dev/null 2>&1 || true
 fi
 {_HOOK_MARKER_END}
 """
+
+
+def _resolve_git_dir(project_root: Path) -> Path | None:
+    """Resolve the actual git directory for project_root.
+
+    Handles three cases:
+    - `.git` is a directory (normal repo): return it.
+    - `.git` is a file containing `gitdir: <path>` (submodule or
+      linked worktree): follow the gitdir: pointer and return the resolved
+      path. Hooks installed there fire correctly for the submodule's
+      post-commit. Worktrees share core hooks with the main checkout, but
+      git still respects per-worktree hook dirs when present.
+    - `.git` missing or unreadable: return None.
+    """
+    git_path = project_root / ".git"
+    if git_path.is_dir():
+        return git_path
+    if not git_path.is_file():
+        return None
+    try:
+        text = git_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("gitdir:"):
+            target = line.removeprefix("gitdir:").strip()
+            target_path = Path(target)
+            if not target_path.is_absolute():
+                target_path = (project_root / target_path).resolve()
+            return target_path if target_path.is_dir() else None
+    return None
 
 
 def install_post_commit_hook(project_root: Path) -> str:
     """Install or update the git post-commit hook for auto-sync.
 
     Idempotent: if the vibe block is already present, no-op.
+    Resolves gitlinks (submodules / linked worktrees) so the hook lands
+    in the right per-checkout hooks dir.
     Returns: "installed" / "appended" / "already" / "no_git".
     """
-    git_dir = project_root / ".git"
-    if not git_dir.is_dir():
+    git_dir = _resolve_git_dir(project_root)
+    if git_dir is None:
         return "no_git"
 
     hooks_dir = git_dir / "hooks"

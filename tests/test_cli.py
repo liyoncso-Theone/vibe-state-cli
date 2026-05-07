@@ -186,6 +186,50 @@ class TestCliInit:
         assert "echo 'user hook'" in content  # Original preserved
         assert "vibe-state-cli:auto-sync" in content  # Vibe block appended
 
+    def test_init_gitignore_covers_hook_log(self, tmp_path: Path) -> None:
+        """Reported by ProBrain team: post-commit hook writes to
+        .vibe/state/.hook.log but .vibe/.gitignore only covered `backups/`,
+        so the log file kept showing up in `git status` as untracked.
+        """
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        gi = (tmp_path / ".vibe" / ".gitignore").read_text(encoding="utf-8")
+        assert "backups/" in gi
+        assert "state/.hook.log" in gi
+        assert "state/*.lock" in gi
+        mp.undo()
+
+    def test_init_force_appends_missing_gitignore_entries(
+        self, tmp_path: Path
+    ) -> None:
+        """Existing projects upgrading to a newer vibe should auto-gain new
+        ignore entries via init --force, without losing their own additions.
+        """
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        # Simulate an old .gitignore that only had backups/ + a user line.
+        gi_path = tmp_path / ".vibe" / ".gitignore"
+        gi_path.write_text(
+            "# vibe-state-cli internals (do not commit)\n"
+            "backups/\n"
+            "my-custom-secret.json\n",
+            encoding="utf-8",
+        )
+        runner.invoke(app, ["init", "--force"])
+        gi = gi_path.read_text(encoding="utf-8")
+        # User addition preserved
+        assert "my-custom-secret.json" in gi
+        # Missing internals appended
+        assert "state/.hook.log" in gi
+        assert "state/*.lock" in gi
+        # No duplicate of backups/
+        assert gi.count("backups/") == 1
+        mp.undo()
+
     def test_init_creates_internal_gitignore(self, tmp_path: Path) -> None:
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.chdir(tmp_path)
@@ -301,6 +345,313 @@ class TestCliInit:
 
 
 # ── Status scenarios ──
+
+
+class TestEnsureInternalGitignore:
+    """Unit tests for the helper directly, isolated from `vibe init`."""
+
+    def test_creates_file_when_missing(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        changed, added = ensure_internal_gitignore(vibe_dir)
+        assert changed is True
+        assert "state/.hook.log" in added
+        body = (vibe_dir / ".gitignore").read_text(encoding="utf-8")
+        for entry in ("backups/", "state/*.lock", "state/.hook.log"):
+            assert entry in body
+
+    def test_noop_when_complete(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text(
+            "# vibe-state-cli internals (do not commit)\n"
+            "backups/\n"
+            "state/*.lock\n"
+            "state/.hook.log\n",
+            encoding="utf-8",
+        )
+        before = gi.read_text(encoding="utf-8")
+        changed, added = ensure_internal_gitignore(vibe_dir)
+        assert changed is False
+        assert added == []
+        assert gi.read_text(encoding="utf-8") == before  # untouched
+
+    def test_appends_only_missing(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text("backups/\n", encoding="utf-8")
+        changed, added = ensure_internal_gitignore(vibe_dir)
+        assert changed is True
+        assert "state/.hook.log" in added
+        assert "state/*.lock" in added
+        assert "backups/" not in added  # already present
+        body = gi.read_text(encoding="utf-8")
+        assert body.count("backups/") == 1  # not duplicated
+
+    def test_preserves_user_added_entries(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text(
+            "backups/\n"
+            "secrets/\n"
+            "my-private-notes.md\n",
+            encoding="utf-8",
+        )
+        ensure_internal_gitignore(vibe_dir)
+        body = gi.read_text(encoding="utf-8")
+        assert "secrets/" in body
+        assert "my-private-notes.md" in body
+        assert "state/.hook.log" in body
+
+    def test_handles_empty_file_without_leading_newline(
+        self, tmp_path: Path
+    ) -> None:
+        """Edge case: an empty .gitignore (e.g., user truncated it) must
+        not produce a leading blank line in the rewritten file."""
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text("", encoding="utf-8")
+        ensure_internal_gitignore(vibe_dir)
+        body = gi.read_text(encoding="utf-8")
+        assert not body.startswith("\n"), f"leading newline: {body!r}"
+        assert body.startswith("backups/")
+
+    def test_handles_whitespace_only_file(self, tmp_path: Path) -> None:
+        """Edge case: .gitignore that's only whitespace should be treated
+        like an empty file."""
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text("   \n\n  \n", encoding="utf-8")
+        ensure_internal_gitignore(vibe_dir)
+        body = gi.read_text(encoding="utf-8")
+        assert not body.startswith("\n")
+        assert "backups/" in body
+
+    def test_handles_no_trailing_newline(self, tmp_path: Path) -> None:
+        """Existing file without trailing newline gets exactly one inserted."""
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text("backups/", encoding="utf-8")  # no trailing \n
+        ensure_internal_gitignore(vibe_dir)
+        body = gi.read_text(encoding="utf-8")
+        # Should not be "backups/state/*.lock..." (entries glued together)
+        assert "backups/\nstate/*.lock" in body
+
+
+class TestCliEncoding:
+    """v0.3.5: cp950 console used to crash on Rich's ✓ marker. cli.py forces
+    UTF-8 on stdout/stderr at startup so users don't have to set
+    PYTHONIOENCODING themselves."""
+
+    def test_force_utf8_io_safe_on_test_streams(self) -> None:
+        """The reconfigure step must not raise on test runners' StringIO."""
+        from vibe_state.cli import _force_utf8_io
+
+        _force_utf8_io()  # Should be a silent no-op or success
+
+    def test_force_utf8_io_handles_non_utf8_encoding(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Simulate a stream whose encoding is cp950: reconfigure should
+        be attempted and successfully change encoding to utf-8."""
+        import sys
+
+        class FakeCp950Stream:
+            encoding = "cp950"
+
+            def reconfigure(self, **kwargs: object) -> None:
+                # Real Windows console reconfigure would succeed here.
+                self.encoding = "utf-8"
+
+            def write(self, s: str) -> int:  # pragma: no cover
+                return len(s)
+
+            def flush(self) -> None:  # pragma: no cover
+                pass
+
+        fake = FakeCp950Stream()
+        monkeypatch.setattr(sys, "stdout", fake)
+        from vibe_state.cli import _force_utf8_io
+
+        _force_utf8_io()
+        assert fake.encoding == "utf-8"
+
+    def test_force_utf8_io_skips_streams_without_reconfigure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Streams without `reconfigure` (e.g. StringIO) must be skipped
+        silently."""
+        import io
+        import sys
+
+        # io.StringIO exposes encoding=None, no reconfigure method.
+        stub = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", stub)
+        from vibe_state.cli import _force_utf8_io
+
+        _force_utf8_io()  # Must not raise
+
+
+class TestStartUpgradesGitignore:
+    """v0.3.5: existing projects from older vibe versions used to need
+    `vibe init --force` to pick up newly-added .gitignore entries.
+    `vibe start` now self-heals on every session so users don't have to."""
+
+    def test_start_self_heals_missing_gitignore_entries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+
+        # Simulate an older project: only `backups/` in .gitignore
+        gi = tmp_path / ".vibe" / ".gitignore"
+        gi.write_text("backups/\n", encoding="utf-8")
+
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0, result.output
+
+        body = gi.read_text(encoding="utf-8")
+        assert "state/.hook.log" in body
+        assert "state/*.lock" in body
+
+    def test_start_does_not_clobber_user_added_lines(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+
+        gi = tmp_path / ".vibe" / ".gitignore"
+        gi.write_text(
+            "backups/\nstate/*.lock\nstate/.hook.log\n"
+            "secrets/\nmy-private.md\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0, result.output
+
+        body = gi.read_text(encoding="utf-8")
+        assert "secrets/" in body
+        assert "my-private.md" in body
+
+
+class TestHookSubmoduleAndWorktree:
+    """v0.3.5: install_post_commit_hook now resolves gitlinks so it works
+    inside submodules and linked worktrees, not just plain repos."""
+
+    def test_resolves_gitlink_to_submodule_dir(
+        self, tmp_path: Path
+    ) -> None:
+        """A submodule's working tree has `.git` as a *file* containing
+        `gitdir: ../.git/modules/sub`. The hook must land in the resolved
+        modules dir, not get rejected as 'no_git'."""
+        from vibe_state.commands._helpers import install_post_commit_hook
+
+        # Simulate a submodule layout
+        parent_git = tmp_path / "parent.git"
+        sub_module_dir = parent_git / "modules" / "sub"
+        sub_module_dir.mkdir(parents=True)
+
+        sub_worktree = tmp_path / "submodule"
+        sub_worktree.mkdir()
+        # `.git` as gitlink file (relative path is the common form)
+        relative_gitdir = (parent_git / "modules" / "sub").resolve()
+        (sub_worktree / ".git").write_text(
+            f"gitdir: {relative_gitdir}\n", encoding="utf-8"
+        )
+
+        status = install_post_commit_hook(sub_worktree)
+        assert status == "installed"
+        assert (sub_module_dir / "hooks" / "post-commit").exists()
+
+    def test_returns_no_git_when_gitlink_target_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """A `.git` file pointing at a nonexistent path must not raise —
+        it should fail closed (no_git)."""
+        from vibe_state.commands._helpers import install_post_commit_hook
+
+        wt = tmp_path / "broken"
+        wt.mkdir()
+        (wt / ".git").write_text(
+            "gitdir: /does/not/exist/anywhere\n", encoding="utf-8"
+        )
+        assert install_post_commit_hook(wt) == "no_git"
+
+    def test_hook_block_runs_in_background(self, tmp_path: Path) -> None:
+        """v0.3.5: the installed hook script must use the `(... &)`
+        background pattern so big-repo `vibe sync` doesn't block the
+        commit prompt."""
+        from vibe_state.commands._helpers import install_post_commit_hook
+
+        (tmp_path / ".git").mkdir()
+        install_post_commit_hook(tmp_path)
+        body = (tmp_path / ".git" / "hooks" / "post-commit").read_text(
+            encoding="utf-8"
+        )
+        # backgrounded subshell: open paren, sync command, &, close paren
+        assert "(vibe sync --no-refresh" in body
+        assert "&)" in body
+
+
+class TestInitGracefulFailures:
+    """v0.3.5: rare-but-real failure modes (read-only FS, locked files)
+    must not crash `vibe init` — degrade with a warning instead."""
+
+    def test_hook_install_oserror_does_not_crash_init(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from vibe_state.commands import cmd_init as _cmd_init
+
+        monkeypatch.delenv("VIBE_SKIP_HOOK_INSTALL", raising=False)
+        monkeypatch.chdir(tmp_path)
+        _git_init(tmp_path)
+
+        def _boom(_root: Path) -> str:
+            raise OSError("simulated permission denied")
+
+        monkeypatch.setattr(_cmd_init, "install_post_commit_hook", _boom)
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0, result.output
+        assert "could not install git post-commit hook" in result.output
+
+    def test_gitignore_oserror_does_not_crash_init(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from vibe_state.commands import cmd_init as _cmd_init
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+
+        def _boom(_vibe_dir: Path) -> tuple[bool, list[str]]:
+            raise OSError("simulated disk full")
+
+        monkeypatch.setattr(_cmd_init, "ensure_internal_gitignore", _boom)
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0, result.output
+        assert "could not write .vibe/.gitignore" in result.output
 
 
 class TestCliVersion:
