@@ -51,3 +51,20 @@ Files changed:
  uv.lock                               |   2 +-
  26 files changed, 1768 insertions(+), 227 deletions(-)
 ```
+
+## Sync [2026-05-07 14:54]
+Commits: 1 since last sync
+```
+f36def9 chore: refresh .vibe/ via vibe init --force on v0.3.4
+```
+
+Files changed:
+```
+.claude/rules/vibe-standards.md |   3 +-
+ .vibe/config.toml               |   2 -
+ .vibe/state/.sync-cursor        |   2 +-
+ .vibe/state/current.md          | 223 +++++++---------------------------------
+ .vibe/state/experiments.md      |   6 --
+ AGENTS.md                       |   3 +-
+ 6 files changed, 41 insertions(+), 198 deletions(-)
+```

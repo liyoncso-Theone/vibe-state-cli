@@ -186,6 +186,50 @@ class TestCliInit:
         assert "echo 'user hook'" in content  # Original preserved
         assert "vibe-state-cli:auto-sync" in content  # Vibe block appended
 
+    def test_init_gitignore_covers_hook_log(self, tmp_path: Path) -> None:
+        """Reported by ProBrain team: post-commit hook writes to
+        .vibe/state/.hook.log but .vibe/.gitignore only covered `backups/`,
+        so the log file kept showing up in `git status` as untracked.
+        """
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        gi = (tmp_path / ".vibe" / ".gitignore").read_text(encoding="utf-8")
+        assert "backups/" in gi
+        assert "state/.hook.log" in gi
+        assert "state/*.lock" in gi
+        mp.undo()
+
+    def test_init_force_appends_missing_gitignore_entries(
+        self, tmp_path: Path
+    ) -> None:
+        """Existing projects upgrading to a newer vibe should auto-gain new
+        ignore entries via init --force, without losing their own additions.
+        """
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+        # Simulate an old .gitignore that only had backups/ + a user line.
+        gi_path = tmp_path / ".vibe" / ".gitignore"
+        gi_path.write_text(
+            "# vibe-state-cli internals (do not commit)\n"
+            "backups/\n"
+            "my-custom-secret.json\n",
+            encoding="utf-8",
+        )
+        runner.invoke(app, ["init", "--force"])
+        gi = gi_path.read_text(encoding="utf-8")
+        # User addition preserved
+        assert "my-custom-secret.json" in gi
+        # Missing internals appended
+        assert "state/.hook.log" in gi
+        assert "state/*.lock" in gi
+        # No duplicate of backups/
+        assert gi.count("backups/") == 1
+        mp.undo()
+
     def test_init_creates_internal_gitignore(self, tmp_path: Path) -> None:
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.chdir(tmp_path)
@@ -301,6 +345,60 @@ class TestCliInit:
 
 
 # ── Status scenarios ──
+
+
+class TestCliEncoding:
+    """v0.3.5: cp950 console used to crash on Rich's ✓ marker. cli.py forces
+    UTF-8 on stdout/stderr at startup so users don't have to set
+    PYTHONIOENCODING themselves."""
+
+    def test_force_utf8_io_safe_on_test_streams(self) -> None:
+        """The reconfigure step must not raise on test runners' StringIO."""
+        from vibe_state.cli import _force_utf8_io
+
+        _force_utf8_io()  # Should be a silent no-op or success
+
+    def test_force_utf8_io_handles_non_utf8_encoding(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Simulate a stream whose encoding is cp950: reconfigure should
+        be attempted and successfully change encoding to utf-8."""
+        import sys
+
+        class FakeCp950Stream:
+            encoding = "cp950"
+
+            def reconfigure(self, **kwargs: object) -> None:
+                # Real Windows console reconfigure would succeed here.
+                self.encoding = "utf-8"
+
+            def write(self, s: str) -> int:  # pragma: no cover
+                return len(s)
+
+            def flush(self) -> None:  # pragma: no cover
+                pass
+
+        fake = FakeCp950Stream()
+        monkeypatch.setattr(sys, "stdout", fake)
+        from vibe_state.cli import _force_utf8_io
+
+        _force_utf8_io()
+        assert fake.encoding == "utf-8"
+
+    def test_force_utf8_io_skips_streams_without_reconfigure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Streams without `reconfigure` (e.g. StringIO) must be skipped
+        silently."""
+        import io
+        import sys
+
+        # io.StringIO exposes encoding=None, no reconfigure method.
+        stub = io.StringIO()
+        monkeypatch.setattr(sys, "stdout", stub)
+        from vibe_state.cli import _force_utf8_io
+
+        _force_utf8_io()  # Must not raise
 
 
 class TestCliVersion:

@@ -11,6 +11,7 @@ from vibe_state.commands._helpers import (
     app,
     check_dangerous_directory,
     console,
+    ensure_internal_gitignore,
     get_vibe_dir,
     install_post_commit_hook,
     require_lifecycle,
@@ -196,14 +197,12 @@ def init(
     save_config(vibe_dir, config)
     write_state(vibe_dir, LifecycleState.READY)
 
-    # Write internal .gitignore for backups
-    internal_gitignore = vibe_dir / ".gitignore"
-    if not internal_gitignore.exists():
-        internal_gitignore.write_text(
-            "# vibe-state-cli internals (do not commit)\nbackups/\n",
-            encoding="utf-8",
-            newline="\n",
-        )
+    # Ensure .vibe/.gitignore covers every runtime artifact (backups,
+    # advisory locks, hook log). Idempotent: appends missing entries
+    # without overwriting user-added lines, so existing projects upgrading
+    # to a newer vibe automatically get coverage for newly-introduced
+    # internal files (e.g. state/.hook.log added in v0.3.4).
+    ensure_internal_gitignore(vibe_dir)
 
     # Phase 5: Emit adapter files
     from vibe_state.adapters.base import build_adapter_context

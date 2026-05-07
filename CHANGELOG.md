@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.5] — 2026-05-07
+
+> Two real-world bugs surfaced within hours of v0.3.4 going live. Both ship
+> in this patch.
+
+### Fixed
+
+- **`UnicodeEncodeError` on Windows cp950/cp936/cp932 consoles** — `vibe status` (and any other Rich-rendered output) crashed with `UnicodeEncodeError: 'cp950' codec can't encode character '✓'` on Windows CMD, PowerShell 5, and CJK-default Windows installs. The `✓ ⚠ ✗` markers and Unicode box-drawing characters that Rich emits cannot be encoded by legacy code pages. Fixed by reconfiguring `sys.stdout` and `sys.stderr` to UTF-8 at CLI entry — users no longer need to set `PYTHONIOENCODING=utf-8` themselves. Reported in production by an external team within hours of the v0.3.4 release.
+
+- **`.vibe/state/.hook.log` showed up untracked in `git status`** — the post-commit hook installed by `vibe init` writes its sync output to `.vibe/state/.hook.log`, but `.vibe/.gitignore` only listed `backups/`. Every commit therefore created an untracked file that lingered in `git status`. Reported by the ProBrain team. Fixed by:
+  - Extracting `.gitignore` management into `ensure_internal_gitignore()` helper that idempotently appends missing entries (`backups/`, `state/*.lock`, `state/.hook.log`) without overwriting user additions.
+  - `vibe init --force` now also runs this helper, so existing projects upgrading to v0.3.5 automatically gain coverage for the newly-introduced runtime files.
+
+### Tests
+
+- 5 new tests, 235 total passing. New `TestCliEncoding` covers the UTF-8 forcing logic with mocked cp950 streams, and two new init tests verify the `.gitignore` helper across both fresh and pre-existing files.
+
+---
+
 ## [0.3.4] — 2026-05-07
 
 > Closes the cross-session continuity gap: state used to silently fall behind

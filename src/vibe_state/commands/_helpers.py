@@ -133,6 +133,51 @@ def refresh_adapters(vibe_dir: Path) -> int:
     return total
 
 
+# ── Internal .gitignore management ──
+
+# Files that vibe writes at runtime and must never be committed.
+# Keep this list in sync with what hook scripts and atomic writes produce.
+_INTERNAL_GITIGNORE_ENTRIES: tuple[str, ...] = (
+    "backups/",
+    "state/*.lock",
+    "state/.hook.log",
+)
+
+
+def ensure_internal_gitignore(vibe_dir: Path) -> tuple[bool, list[str]]:
+    """Make sure .vibe/.gitignore covers every runtime artifact vibe produces.
+
+    Idempotent: if the file is missing, it's written from a template.
+    If it exists, we append only the entries that aren't already present —
+    user-added lines are preserved untouched.
+
+    Returns: (was_changed, entries_added)
+    """
+    gi_path = vibe_dir / ".gitignore"
+
+    if not gi_path.exists():
+        gi_path.parent.mkdir(parents=True, exist_ok=True)
+        body = "# vibe-state-cli internals (do not commit)\n" + "\n".join(
+            _INTERNAL_GITIGNORE_ENTRIES
+        ) + "\n"
+        gi_path.write_text(body, encoding="utf-8", newline="\n")
+        return True, list(_INTERNAL_GITIGNORE_ENTRIES)
+
+    try:
+        existing = gi_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False, []
+
+    existing_lines = {ln.strip() for ln in existing.splitlines()}
+    missing = [e for e in _INTERNAL_GITIGNORE_ENTRIES if e not in existing_lines]
+    if not missing:
+        return False, []
+
+    new_content = existing.rstrip() + "\n" + "\n".join(missing) + "\n"
+    gi_path.write_text(new_content, encoding="utf-8", newline="\n")
+    return True, missing
+
+
 # ── Git post-commit hook (auto-sync) ──
 
 _HOOK_MARKER_START = "# vibe-state-cli:auto-sync"
