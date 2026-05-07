@@ -30,10 +30,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `vibe init --force` no longer silently reverts a zh-TW project back to English. The new `--lang` resolution is: explicit flag > existing config on `--force` > default `en`
 - `vibe sync --no-refresh` no longer prints the C.L.E.A.R. review checklist. The hook redirects sync output to `.vibe/state/.hook.log`; the checklist is for humans, so leaking it into a log file (and hitting cp950 encoding mojibake on Windows along the way) was pure noise
+- `vibe sync --no-refresh` silently skips when lifecycle isn't ACTIVE. After `vibe init --force`, lifecycle is READY until the user runs `vibe start`; the post-commit hook used to spam `.hook.log` with "Cannot run 'vibe sync' in READY state" errors on every commit. Plain `vibe sync` (no flag) still errors loudly to preserve the manual UX
 
 ### Tests
 
-- 18 new tests, 226 total passing. New `tests/conftest.py` autouse fixture sets `VIBE_SKIP_HOOK_INSTALL=1` so `subprocess.run git commit` inside tests stays deterministic; hook-behavior tests delete the env var in their own scope
+- 19 new tests, 227 total passing. New `tests/conftest.py` autouse fixture sets `VIBE_SKIP_HOOK_INSTALL=1` so `subprocess.run git commit` inside tests stays deterministic; hook-behavior tests delete the env var in their own scope
 
 ---
 

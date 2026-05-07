@@ -591,6 +591,29 @@ class TestCliSync:
         assert progress_idx < note_idx
         mp.undo()
 
+    def test_sync_no_refresh_silent_when_lifecycle_not_active(
+        self, tmp_path: Path
+    ) -> None:
+        """sync --no-refresh in READY state should silently skip (used by hook).
+
+        After `vibe init --force`, lifecycle is READY until the user runs
+        `vibe start`. The git hook fires sync after every commit, so the
+        first commit post-init must not spam .hook.log with state errors.
+        """
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])  # Lifecycle is now READY (no `start`)
+        result = runner.invoke(app, ["sync", "--no-refresh"])
+        # Silent skip — no error, no output
+        assert result.exit_code == 0
+        assert "Cannot run" not in result.output
+        # Without --no-refresh, READY should still error (preserve plain `sync` UX)
+        result_loud = runner.invoke(app, ["sync"])
+        assert result_loud.exit_code == 1
+        assert "Cannot run" in result_loud.output
+        mp.undo()
+
     def test_sync_no_refresh_suppresses_clear_checklist(self, tmp_path: Path) -> None:
         """sync --no-refresh should not print C.L.E.A.R. checklist (used by hook).
 

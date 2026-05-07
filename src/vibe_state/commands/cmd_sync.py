@@ -38,7 +38,7 @@ def sync(
     from vibe_state.config import load_config
     from vibe_state.core.compactor import compact_tasks
     from vibe_state.core.git_ops import git_available
-    from vibe_state.core.lifecycle import write_state
+    from vibe_state.core.lifecycle import LifecycleState, read_state, write_state
     from vibe_state.core.state import append_to_state_file, write_state_file
 
     vibe_dir = get_vibe_dir()
@@ -46,6 +46,12 @@ def sync(
     if close:
         next_state = require_lifecycle(get_vibe_dir(), "close")
     else:
+        # Hook mode: silently skip when lifecycle isn't ACTIVE yet.
+        # After `vibe init --force`, lifecycle is READY until the user runs
+        # `vibe start`. Without this guard, every post-commit hook fires off
+        # a "Cannot run 'vibe sync' in READY state" error into .hook.log.
+        if no_refresh and read_state(vibe_dir) != LifecycleState.ACTIVE:
+            return
         require_lifecycle(get_vibe_dir(), "sync")
 
     config = load_config(vibe_dir)
