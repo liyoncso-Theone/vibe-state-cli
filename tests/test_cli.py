@@ -512,6 +512,148 @@ class TestCliEncoding:
         _force_utf8_io()  # Must not raise
 
 
+class TestStartUpgradesGitignore:
+    """v0.3.5: existing projects from older vibe versions used to need
+    `vibe init --force` to pick up newly-added .gitignore entries.
+    `vibe start` now self-heals on every session so users don't have to."""
+
+    def test_start_self_heals_missing_gitignore_entries(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+
+        # Simulate an older project: only `backups/` in .gitignore
+        gi = tmp_path / ".vibe" / ".gitignore"
+        gi.write_text("backups/\n", encoding="utf-8")
+
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0, result.output
+
+        body = gi.read_text(encoding="utf-8")
+        assert "state/.hook.log" in body
+        assert "state/*.lock" in body
+
+    def test_start_does_not_clobber_user_added_lines(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+        runner.invoke(app, ["init"])
+
+        gi = tmp_path / ".vibe" / ".gitignore"
+        gi.write_text(
+            "backups/\nstate/*.lock\nstate/.hook.log\n"
+            "secrets/\nmy-private.md\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0, result.output
+
+        body = gi.read_text(encoding="utf-8")
+        assert "secrets/" in body
+        assert "my-private.md" in body
+
+
+class TestHookSubmoduleAndWorktree:
+    """v0.3.5: install_post_commit_hook now resolves gitlinks so it works
+    inside submodules and linked worktrees, not just plain repos."""
+
+    def test_resolves_gitlink_to_submodule_dir(
+        self, tmp_path: Path
+    ) -> None:
+        """A submodule's working tree has `.git` as a *file* containing
+        `gitdir: ../.git/modules/sub`. The hook must land in the resolved
+        modules dir, not get rejected as 'no_git'."""
+        from vibe_state.commands._helpers import install_post_commit_hook
+
+        # Simulate a submodule layout
+        parent_git = tmp_path / "parent.git"
+        sub_module_dir = parent_git / "modules" / "sub"
+        sub_module_dir.mkdir(parents=True)
+
+        sub_worktree = tmp_path / "submodule"
+        sub_worktree.mkdir()
+        # `.git` as gitlink file (relative path is the common form)
+        relative_gitdir = (parent_git / "modules" / "sub").resolve()
+        (sub_worktree / ".git").write_text(
+            f"gitdir: {relative_gitdir}\n", encoding="utf-8"
+        )
+
+        status = install_post_commit_hook(sub_worktree)
+        assert status == "installed"
+        assert (sub_module_dir / "hooks" / "post-commit").exists()
+
+    def test_returns_no_git_when_gitlink_target_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """A `.git` file pointing at a nonexistent path must not raise —
+        it should fail closed (no_git)."""
+        from vibe_state.commands._helpers import install_post_commit_hook
+
+        wt = tmp_path / "broken"
+        wt.mkdir()
+        (wt / ".git").write_text(
+            "gitdir: /does/not/exist/anywhere\n", encoding="utf-8"
+        )
+        assert install_post_commit_hook(wt) == "no_git"
+
+    def test_hook_block_runs_in_background(self, tmp_path: Path) -> None:
+        """v0.3.5: the installed hook script must use the `(... &)`
+        background pattern so big-repo `vibe sync` doesn't block the
+        commit prompt."""
+        from vibe_state.commands._helpers import install_post_commit_hook
+
+        (tmp_path / ".git").mkdir()
+        install_post_commit_hook(tmp_path)
+        body = (tmp_path / ".git" / "hooks" / "post-commit").read_text(
+            encoding="utf-8"
+        )
+        # backgrounded subshell: open paren, sync command, &, close paren
+        assert "(vibe sync --no-refresh" in body
+        assert "&)" in body
+
+
+class TestInitGracefulFailures:
+    """v0.3.5: rare-but-real failure modes (read-only FS, locked files)
+    must not crash `vibe init` — degrade with a warning instead."""
+
+    def test_hook_install_oserror_does_not_crash_init(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from vibe_state.commands import cmd_init as _cmd_init
+
+        monkeypatch.delenv("VIBE_SKIP_HOOK_INSTALL", raising=False)
+        monkeypatch.chdir(tmp_path)
+        _git_init(tmp_path)
+
+        def _boom(_root: Path) -> str:
+            raise OSError("simulated permission denied")
+
+        monkeypatch.setattr(_cmd_init, "install_post_commit_hook", _boom)
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0, result.output
+        assert "could not install git post-commit hook" in result.output
+
+    def test_gitignore_oserror_does_not_crash_init(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from vibe_state.commands import cmd_init as _cmd_init
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".git").mkdir()
+
+        def _boom(_vibe_dir: Path) -> tuple[bool, list[str]]:
+            raise OSError("simulated disk full")
+
+        monkeypatch.setattr(_cmd_init, "ensure_internal_gitignore", _boom)
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0, result.output
+        assert "could not write .vibe/.gitignore" in result.output
+
+
 class TestCliVersion:
     def test_version_flag_long(self) -> None:
         result = runner.invoke(app, ["--version"])

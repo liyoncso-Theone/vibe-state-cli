@@ -10,6 +10,7 @@ from rich.table import Table
 from vibe_state.commands._helpers import (
     app,
     console,
+    ensure_internal_gitignore,
     extract_latest_progress,
     extract_section_items,
     get_vibe_dir,
@@ -34,6 +35,14 @@ def start() -> None:
 
     vibe_dir = get_vibe_dir()
     next_state = require_lifecycle(get_vibe_dir(), "start")
+
+    # Self-healing upgrade: existing projects from older vibe versions may
+    # be missing newly-introduced .gitignore entries (e.g. state/.hook.log
+    # added in v0.3.4). Idempotent — no-op when already up-to-date.
+    import contextlib
+
+    with contextlib.suppress(OSError):
+        ensure_internal_gitignore(vibe_dir)
 
     config = load_config(vibe_dir)
 
