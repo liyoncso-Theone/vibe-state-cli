@@ -347,6 +347,117 @@ class TestCliInit:
 # ── Status scenarios ──
 
 
+class TestEnsureInternalGitignore:
+    """Unit tests for the helper directly, isolated from `vibe init`."""
+
+    def test_creates_file_when_missing(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        changed, added = ensure_internal_gitignore(vibe_dir)
+        assert changed is True
+        assert "state/.hook.log" in added
+        body = (vibe_dir / ".gitignore").read_text(encoding="utf-8")
+        for entry in ("backups/", "state/*.lock", "state/.hook.log"):
+            assert entry in body
+
+    def test_noop_when_complete(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text(
+            "# vibe-state-cli internals (do not commit)\n"
+            "backups/\n"
+            "state/*.lock\n"
+            "state/.hook.log\n",
+            encoding="utf-8",
+        )
+        before = gi.read_text(encoding="utf-8")
+        changed, added = ensure_internal_gitignore(vibe_dir)
+        assert changed is False
+        assert added == []
+        assert gi.read_text(encoding="utf-8") == before  # untouched
+
+    def test_appends_only_missing(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text("backups/\n", encoding="utf-8")
+        changed, added = ensure_internal_gitignore(vibe_dir)
+        assert changed is True
+        assert "state/.hook.log" in added
+        assert "state/*.lock" in added
+        assert "backups/" not in added  # already present
+        body = gi.read_text(encoding="utf-8")
+        assert body.count("backups/") == 1  # not duplicated
+
+    def test_preserves_user_added_entries(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text(
+            "backups/\n"
+            "secrets/\n"
+            "my-private-notes.md\n",
+            encoding="utf-8",
+        )
+        ensure_internal_gitignore(vibe_dir)
+        body = gi.read_text(encoding="utf-8")
+        assert "secrets/" in body
+        assert "my-private-notes.md" in body
+        assert "state/.hook.log" in body
+
+    def test_handles_empty_file_without_leading_newline(
+        self, tmp_path: Path
+    ) -> None:
+        """Edge case: an empty .gitignore (e.g., user truncated it) must
+        not produce a leading blank line in the rewritten file."""
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text("", encoding="utf-8")
+        ensure_internal_gitignore(vibe_dir)
+        body = gi.read_text(encoding="utf-8")
+        assert not body.startswith("\n"), f"leading newline: {body!r}"
+        assert body.startswith("backups/")
+
+    def test_handles_whitespace_only_file(self, tmp_path: Path) -> None:
+        """Edge case: .gitignore that's only whitespace should be treated
+        like an empty file."""
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text("   \n\n  \n", encoding="utf-8")
+        ensure_internal_gitignore(vibe_dir)
+        body = gi.read_text(encoding="utf-8")
+        assert not body.startswith("\n")
+        assert "backups/" in body
+
+    def test_handles_no_trailing_newline(self, tmp_path: Path) -> None:
+        """Existing file without trailing newline gets exactly one inserted."""
+        from vibe_state.commands._helpers import ensure_internal_gitignore
+
+        vibe_dir = tmp_path / ".vibe"
+        vibe_dir.mkdir()
+        gi = vibe_dir / ".gitignore"
+        gi.write_text("backups/", encoding="utf-8")  # no trailing \n
+        ensure_internal_gitignore(vibe_dir)
+        body = gi.read_text(encoding="utf-8")
+        # Should not be "backups/state/*.lock..." (entries glued together)
+        assert "backups/\nstate/*.lock" in body
+
+
 class TestCliEncoding:
     """v0.3.5: cp950 console used to crash on Rich's ✓ marker. cli.py forces
     UTF-8 on stdout/stderr at startup so users don't have to set

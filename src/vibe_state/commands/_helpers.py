@@ -173,7 +173,10 @@ def ensure_internal_gitignore(vibe_dir: Path) -> tuple[bool, list[str]]:
     if not missing:
         return False, []
 
-    new_content = existing.rstrip() + "\n" + "\n".join(missing) + "\n"
+    # Avoid a stray leading newline when the existing file is empty or
+    # whitespace-only (rstrip() == "").
+    prefix = existing.rstrip()
+    new_content = (prefix + "\n" if prefix else "") + "\n".join(missing) + "\n"
     gi_path.write_text(new_content, encoding="utf-8", newline="\n")
     return True, missing
 

@@ -19,9 +19,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Extracting `.gitignore` management into `ensure_internal_gitignore()` helper that idempotently appends missing entries (`backups/`, `state/*.lock`, `state/.hook.log`) without overwriting user additions.
   - `vibe init --force` now also runs this helper, so existing projects upgrading to v0.3.5 automatically gain coverage for the newly-introduced runtime files.
 
+### Hardened
+
+- `ensure_internal_gitignore()` no longer leaves a stray leading newline when the existing `.gitignore` is empty or whitespace-only.
+
 ### Tests
 
-- 5 new tests, 235 total passing. New `TestCliEncoding` covers the UTF-8 forcing logic with mocked cp950 streams, and two new init tests verify the `.gitignore` helper across both fresh and pre-existing files.
+- 12 new tests, 242 total passing. `TestCliEncoding` covers the UTF-8 forcing logic with mocked cp950 streams; two integration tests verify the `init` wiring for fresh and pre-existing `.gitignore` files; new `TestEnsureInternalGitignore` adds 7 unit-level tests covering all helper branches (missing file, complete file, partial file, user-added entries preserved, empty file, whitespace-only file, no trailing newline).
 
 ---
 
