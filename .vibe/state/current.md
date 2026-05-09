@@ -68,3 +68,54 @@ Files changed:
  AGENTS.md                       |   3 +-
  6 files changed, 41 insertions(+), 198 deletions(-)
 ```
+
+## Sync [2026-05-07 15:16]
+Commits: 1 since last sync
+```
+34149aa fix: cp950 UnicodeEncodeError + .hook.log untracked noise (v0.3.5)
+```
+
+Files changed:
+```
+.vibe/state/.sync-cursor            |  2 +-
+ .vibe/state/current.md              | 17 +++++++
+ CHANGELOG.md                        | 19 +++++++
+ pyproject.toml                      |  2 +-
+ src/vibe_state/__init__.py          |  2 +-
+ src/vibe_state/cli.py               | 43 +++++++++++++---
+ src/vibe_state/commands/_helpers.py | 45 +++++++++++++++++
+ src/vibe_state/commands/cmd_init.py | 15 +++---
+ tests/test_cli.py                   | 98 +++++++++++++++++++++++++++++++++++++
+ uv.lock                             |  2 +-
+ 10 files changed, 227 insertions(+), 18 deletions(-)
+```
+
+## Sync [2026-05-07 15:28]
+Commits: 1 since last sync
+```
+e4a1055 test: harden ensure_internal_gitignore against edge cases
+```
+
+Files changed:
+```
+CHANGELOG.md                        |   6 +-
+ src/vibe_state/commands/_helpers.py |   5 +-
+ tests/test_cli.py                   | 111 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 120 insertions(+), 2 deletions(-)
+```
+
+## Sync [2026-05-07 15:51]
+Commits: 1 since last sync
+```
+da09ac4 fix: 4 defensive patches — submodule/worktree, big-repo hook, upgrade UX, graceful init
+```
+
+Files changed:
+```
+CHANGELOG.md                         |  16 +++-
+ src/vibe_state/commands/_helpers.py  |  47 ++++++++++--
+ src/vibe_state/commands/cmd_init.py  |  17 ++++-
+ src/vibe_state/commands/cmd_start.py |   9 +++
+ tests/test_cli.py                    | 142 +++++++++++++++++++++++++++++++++++
+ 5 files changed, 220 insertions(+), 11 deletions(-)
+```
