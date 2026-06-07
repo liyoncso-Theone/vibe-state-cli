@@ -1,3 +1,3 @@
 """vibe-state-cli: Model-agnostic AI-human collaboration state management."""
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"

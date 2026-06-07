@@ -29,8 +29,12 @@ class CursorAdapter(AdapterBase):
             f"# Vibe Standards — {ctx.project_name}",
             "",
         ]
-        # Cursor cannot read AGENTS.md — use compact mode (inline standards)
-        lines += self._build_common_body(ctx, mode="compact")
+        # v0.3.6: Cursor now reads AGENTS.md natively (Linux Foundation
+        # Agentic AI Foundation standard, 2025-12). When AGENTS.md is
+        # co-enabled, emit a one-line shim that defers to it instead of
+        # duplicating standards inline — single source of truth, less drift.
+        mode = "slim" if "agents_md" in ctx.enabled_adapters else "compact"
+        lines += self._build_common_body(ctx, mode=mode)
         content = "\n".join(lines)
         if not self.validate(content):
             self._warn_validation("Cursor .mdc")

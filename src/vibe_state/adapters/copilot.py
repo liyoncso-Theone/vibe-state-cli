@@ -20,17 +20,23 @@ class CopilotAdapter(AdapterBase):
     def emit(self, ctx: AdapterContext) -> list[Path]:
         files: list[Path] = []
 
-        # Copilot cannot read AGENTS.md — use compact mode (4000 char limit)
+        # v0.3.6: Copilot now reads AGENTS.md natively (Linux Foundation
+        # Agentic AI Foundation standard, 2025-12). When co-enabled,
+        # emit one-line shims deferring to AGENTS.md instead of inlining
+        # standards into two files (which also stays well under the
+        # 4000-char per-file limit).
+        mode = "slim" if "agents_md" in ctx.enabled_adapters else "compact"
+
         # Main instructions (no frontmatter)
         main = [f"# Copilot Instructions — {ctx.project_name}", ""]
-        main += self._build_common_body(ctx, mode="compact")
+        main += self._build_common_body(ctx, mode=mode)
         files.append(self._write_file(
             ctx.project_root / ".github" / "copilot-instructions.md", "\n".join(main)
         ))
 
         # Path-scoped instructions
         scoped = ["---", 'applyTo: "**/*"', "---", "", "# Vibe Standards", ""]
-        scoped += self._build_common_body(ctx, mode="compact")
+        scoped += self._build_common_body(ctx, mode=mode)
         content = "\n".join(scoped)
         if not self.validate(content):
             self._warn_validation("Copilot instructions")

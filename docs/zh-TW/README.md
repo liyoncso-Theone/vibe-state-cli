@@ -67,6 +67,8 @@ vibe 預設就會做對的事。下面這些選項是你想要更精細控制時
 
 ```bash
 vibe sync --note "..."        # 記下「為什麼」（架構決策、意圖）
+vibe sync --promote "標題"    # 把最新 sync 區塊推到外部知識庫
+                              # （opt-in；在 .vibe/config.toml 設定 [promotion]）
 vibe adapt --lang zh-TW       # 隨時切換介面語言（en / zh-TW）
 vibe init --no-hooks          # 跳過自動安裝 git post-commit hook
 vibe sync --close             # 結案專案（寫回顧報告）
@@ -75,6 +77,16 @@ vibe --version                # 顯示版本
 ```
 
 跑 `vibe <command> --help` 看完整選項，或看 [使用者指南](USER-GUIDE.md) 找詳細說明。
+
+### v0.3.6 更新內容
+
+維持 5 個指令——這是旗標層的精修 + 對齊業界標準，不是擴張命令面。
+
+- **修正**：post-commit hook 不再造成 `git status` 兩個檔案無限循環。`.sync-cursor` 與 `.lifecycle` 改為未追蹤的執行期狀態（既有專案下次跑 `vibe start` 會自動遷移）。
+- **轉向**：AGENTS.md 成為標準的單一真實來源。當 AGENTS.md 同時啟用時，Cursor / Windsurf / Cline / Roo / Copilot adapter 改寫一行 shim 而非重複內嵌準則。對齊 Linux Foundation Agentic AI Foundation 標準（2025-12）。
+- **過渡**：Antigravity adapter 同時寫入新的 `.agents/skills/` 結構與舊版 `GEMINI.md`。Gemini CLI 將於 2026-06-18 關閉，舊檔案保留至過渡期結束。
+- **新旗標**：`vibe sync --promote "標題"` 透過 vendor-neutral subprocess 將最新 sync 區塊推到外部知識庫（預設 backend：`basic-memory` CLI；預設關閉）。設定可擴充到 Obsidian / Logseq / raw-file。
+- **狀態**：Alpha → Beta。已穩定運行於 11+ dogfood 專案，跨過初始原型階段。
 
 ## 原理
 

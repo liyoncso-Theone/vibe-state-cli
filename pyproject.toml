@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vibe-state-cli"
-version = "0.3.5"
+version = "0.3.6"
 description = "Model-agnostic AI-human collaboration state management CLI"
 readme = "README.md"
 license = "MIT"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["ai", "cli", "state-management", "developer-tools", "vibe"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
@@ -43,9 +43,6 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
     "pre-commit>=3.0.0",
-]
-mcp = [
-    "mcp>=1.27.0",
 ]
 
 [project.scripts]

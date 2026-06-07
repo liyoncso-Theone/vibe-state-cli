@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -137,10 +139,28 @@ def refresh_adapters(vibe_dir: Path) -> int:
 
 # Files that vibe writes at runtime and must never be committed.
 # Keep this list in sync with what hook scripts and atomic writes produce.
+#
+# v0.3.6: .sync-cursor and .lifecycle moved here. Both are machine-driven
+# state (cursor mutates on every commit, lifecycle on every state transition);
+# tracking them in git created the infinite "modified after every commit"
+# loop because the post-commit hook re-wrote them after the commit landed.
+# Treat them like ~/.claude/projects/<hash>/*.jsonl — runtime state stays
+# on disk, never in the index.
 _INTERNAL_GITIGNORE_ENTRIES: tuple[str, ...] = (
     "backups/",
     "state/*.lock",
     "state/.hook.log",
+    "state/.sync-cursor",
+    "state/.lifecycle",
+)
+
+# Files that v0.3.6 migration moves from tracked to untracked. Used by
+# ensure_state_files_untracked() to surgically `git rm --cached` only the
+# files that semantically became runtime state, leaving user-content files
+# (current.md, tasks.md, standards.md, etc.) tracked.
+_FILES_TO_UNTRACK_V0_3_6: tuple[str, ...] = (
+    ".vibe/state/.sync-cursor",
+    ".vibe/state/.lifecycle",
 )
 
 
@@ -191,7 +211,9 @@ _HOOK_MARKER_END = "# vibe-state-cli:auto-sync:end"
 # `(... &)` is POSIX-portable and works under git-bash on Windows.
 _HOOK_BLOCK = f"""\
 {_HOOK_MARKER_START}
-# Auto-installed by `vibe init`. Keeps state/current.md in sync with git.
+# Auto-installed by `vibe init`. Keeps .sync-cursor advanced to HEAD on
+# every commit (current.md is reserved for explicit `vibe sync` /
+# `vibe start` so this hook never creates a tracked-file write loop).
 # Runs in background so your commit prompt is never blocked.
 # To disable, delete this block (between the start/end markers) or run
 # `vibe init --force --no-hooks`. Failures are logged silently to
@@ -346,11 +368,56 @@ class SyncResult:
     experiments_reverted: int = 0
 
 
+def perform_cursor_update(vibe_dir: Path) -> SyncResult:
+    """Lightweight sync: update only `.sync-cursor` to HEAD.
+
+    v0.3.6: this is what the post-commit hook calls. It deliberately does
+    NOT touch `current.md`, because writing to a tracked file from the hook
+    creates an infinite `git status` loop (hook fires → file becomes
+    "modified" → user commits → hook fires again → loop).
+
+    `current.md` is reserved for user-initiated syncs (`vibe sync` no flag,
+    `vibe start`) so explicit human action is what populates the
+    human-readable activity log.
+
+    Returns SyncResult with commits_synced reflecting the gap closed by
+    this cursor advance (purely informational; the file is not written).
+    """
+    from vibe_state.core.git_ops import (
+        get_head_hash,
+        get_log_since,
+        git_available,
+        read_sync_cursor,
+        write_sync_cursor,
+    )
+
+    result = SyncResult()
+    config = safe_load_config(vibe_dir)
+    if not config.git.enabled or not git_available():
+        return result
+
+    project_root = vibe_dir.parent
+    last_sync = read_sync_cursor(vibe_dir)
+    commits = get_log_since(project_root, last_sync)
+
+    if not commits:
+        return result
+
+    head = get_head_hash(project_root)
+    write_sync_cursor(vibe_dir, head)
+    result.commits_synced = len(commits)
+    return result
+
+
 def perform_git_sync(vibe_dir: Path, *, label: str = "Sync") -> SyncResult:
-    """Append git activity to state/current.md, update sync cursor, detect experiments.
+    """Full sync: append git activity to state/current.md, update cursor,
+    detect experiments.
+
+    Called by explicit `vibe sync` and `vibe start` (user-initiated). The
+    post-commit hook calls `perform_cursor_update()` instead — see that
+    function's docstring for why.
 
     Idempotent: returns SyncResult() (all zeros) if state already current.
-    Used by both `vibe sync` and `vibe start` (auto-sync) to keep state fresh.
     """
     from datetime import datetime, timezone
 
@@ -422,6 +489,200 @@ def perform_git_sync(vibe_dir: Path, *, label: str = "Sync") -> SyncResult:
         )
 
     return result
+
+
+def ensure_state_files_untracked(project_root: Path) -> list[str]:
+    """v0.3.6 migration: move `.sync-cursor` and `.lifecycle` out of the git
+    index for projects that originally tracked them.
+
+    Idempotent. File contents stay on disk; only the index entry is removed
+    via `git rm --cached`. Called from `vibe init --force` and `vibe start`
+    so existing projects upgrade silently on next session start.
+
+    Returns the list of paths actually untracked (empty if all clean).
+    """
+    git_dir = _resolve_git_dir(project_root)
+    if git_dir is None:
+        return []
+
+    untracked: list[str] = []
+    for rel in _FILES_TO_UNTRACK_V0_3_6:
+        # `git ls-files --error-unmatch` exits 0 if tracked, 1 if not.
+        try:
+            check = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", rel],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if check.returncode != 0:
+            continue
+        try:
+            rm = subprocess.run(
+                ["git", "rm", "--cached", "--quiet", rel],
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if rm.returncode == 0:
+                untracked.append(rel)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+    return untracked
+
+
+def _extract_latest_sync_block(current_md: str) -> str:
+    """Pull the most recent `## Sync [...]` block out of current.md as a
+    standalone string. Used by `vibe sync --promote` as the pre-fill for
+    the human to edit before shipping.
+
+    Returns empty string if no sync block found.
+    """
+    lines = current_md.splitlines()
+    last_start: int | None = None
+    for i, line in enumerate(lines):
+        if line.startswith("## Sync ") or line.startswith("## Final Sync "):
+            last_start = i
+    if last_start is None:
+        return ""
+    end = len(lines)
+    for j in range(last_start + 1, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+    return "\n".join(lines[last_start:end]).rstrip() + "\n"
+
+
+def promote_to_backend(
+    vibe_dir: Path,
+    title: str,
+    *,
+    editor_factory: object = None,
+) -> tuple[bool, str]:
+    """v0.3.6: promote the most recent sync block to an external knowledge
+    store via vendor-neutral subprocess call.
+
+    Architecture:
+        - `target` config is a string (today: "basic-memory"; future:
+          "obsidian", "logseq", "raw-file", ...).
+        - Each recognized target maps to a subprocess command shape.
+          Unknown targets surface an actionable error pointing at
+          .vibe/config.toml.
+        - On `enabled = False`, returns (False, "promotion disabled")
+          without side effect.
+        - Failure modes (binary not on PATH, subprocess non-zero) return
+          friendly errors; never raise.
+
+    `editor_factory` is for testing — pass a callable that returns the
+    final note content without launching $EDITOR. Production code leaves
+    it None, which opens the user's editor with the latest sync block
+    pre-filled.
+
+    Returns: (success, message).
+    """
+    import os
+    import tempfile
+
+    from vibe_state.core.state import read_state_file
+
+    config = safe_load_config(vibe_dir)
+    if not config.promotion.enabled:
+        return False, (
+            "Promotion disabled. Set [promotion].enabled = true in"
+            " .vibe/config.toml to use --promote."
+        )
+
+    title = (title or "").strip()
+    if not title:
+        return False, "Promotion requires a title (--promote 'short title')."
+
+    current_md = read_state_file(vibe_dir, "current.md")
+    pre_fill = _extract_latest_sync_block(current_md)
+    if not pre_fill:
+        pre_fill = (
+            f"# {title}\n\n_(No recent sync block found; edit and add the\n"
+            f"rationale you want promoted.)_\n"
+        )
+    else:
+        pre_fill = (
+            f"# {title}\n\n"
+            "<!-- Edit this down to the rationale you want to promote.\n"
+            "     Everything below this comment is the latest sync block;\n"
+            "     keep, trim, or rewrite as needed. Save & close to ship. -->\n\n"
+            f"{pre_fill}"
+        )
+
+    # Get the edited content
+    if editor_factory is not None:
+        # Test path: caller supplies the final content directly.
+        edited = editor_factory(pre_fill) if callable(editor_factory) else str(editor_factory)
+    else:
+        editor = os.environ.get("EDITOR") or (
+            "notepad" if os.name == "nt" else "vi"
+        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(pre_fill)
+            tmp_path = tmp.name
+        try:
+            ret = subprocess.run([editor, tmp_path])
+            if ret.returncode != 0:
+                return False, f"Editor {editor!r} exited non-zero; aborting promotion."
+            with open(tmp_path, encoding="utf-8") as f:
+                edited = f.read()
+        finally:
+            import contextlib
+
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+
+    edited = edited.strip()
+    if not edited:
+        return False, "Empty content after edit; nothing promoted."
+
+    # ── Dispatch by target ──
+    target = config.promotion.target
+    if target == "basic-memory":
+        if shutil.which("basic-memory") is None:
+            return False, (
+                "basic-memory CLI not found on PATH. Install it from"
+                " https://docs.basicmemory.com/ or change [promotion].target"
+                " in .vibe/config.toml."
+            )
+        try:
+            ret = subprocess.run(
+                [
+                    "basic-memory", "tool", "write-note",
+                    "--project", config.promotion.project,
+                    "--folder", config.promotion.folder,
+                    "--title", title,
+                ],
+                input=edited,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return False, f"basic-memory invocation failed: {e}"
+        if ret.returncode != 0:
+            err = (ret.stderr or "").strip() if isinstance(ret.stderr, str) else ""
+            out = (ret.stdout or "").strip() if isinstance(ret.stdout, str) else ""
+            return False, (
+                f"basic-memory exited {ret.returncode}: {err or out}"
+            )
+        return True, (
+            f"Promoted to {target}:{config.promotion.project}/{config.promotion.folder}: {title!r}"
+        )
+
+    return False, (
+        f"Unknown promotion target {target!r}. Set [promotion].target in"
+        " .vibe/config.toml to one of: basic-memory."
+    )
 
 
 def check_dangerous_directory(cwd: Path | None = None) -> None:
