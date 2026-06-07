@@ -56,12 +56,33 @@ class ExperimentsSection(BaseModel):
     )
 
 
+class PromotionSection(BaseModel):
+    """v0.3.6: vendor-neutral configuration for `vibe sync --promote`.
+
+    The `target` field is a string. Today's recognized value is
+    `basic-memory` (calls `basic-memory tool write-note ...`); the
+    architecture is designed to extend to `obsidian`, `logseq`,
+    `raw-file`, etc. without changing the command surface — only this
+    config section + a per-target subprocess shim are added.
+
+    Default `enabled = False`: zero behavior change for users who don't
+    opt in. The flag still parses on the CLI but does nothing unless
+    enabled here.
+    """
+
+    enabled: bool = False
+    target: str = "basic-memory"
+    project: str = "methodology"
+    folder: str = "vibe-promotions"
+
+
 class VibeConfig(BaseModel):
     vibe: VibeSection = Field(default_factory=VibeSection)
     state: StateSection = Field(default_factory=StateSection)
     adapters: AdaptersSection = Field(default_factory=AdaptersSection)
     git: GitSection = Field(default_factory=GitSection)
     experiments: ExperimentsSection = Field(default_factory=ExperimentsSection)
+    promotion: PromotionSection = Field(default_factory=PromotionSection)
 
 
 def load_config(vibe_dir: Path) -> VibeConfig:

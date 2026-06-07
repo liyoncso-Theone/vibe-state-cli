@@ -18,8 +18,10 @@ class RooAdapter(AdapterBase):
 
     def emit(self, ctx: AdapterContext) -> list[Path]:
         lines = [f"# Vibe Standards — {ctx.project_name}", ""]
-        # Roo Code — use compact mode
-        lines += self._build_common_body(ctx, mode="compact")
+        # v0.3.6: AGENTS.md is now the Linux Foundation standard
+        # (2025-12). When co-enabled, defer to it via a one-line shim.
+        mode = "slim" if "agents_md" in ctx.enabled_adapters else "compact"
+        lines += self._build_common_body(ctx, mode=mode)
         return [self._write_file(
             ctx.project_root / ".roo" / "rules" / "01-vibe-standards.md",
             "\n".join(lines),

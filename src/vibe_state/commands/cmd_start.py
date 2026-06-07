@@ -11,6 +11,7 @@ from vibe_state.commands._helpers import (
     app,
     console,
     ensure_internal_gitignore,
+    ensure_state_files_untracked,
     extract_latest_progress,
     extract_section_items,
     get_vibe_dir,
@@ -38,11 +39,18 @@ def start() -> None:
 
     # Self-healing upgrade: existing projects from older vibe versions may
     # be missing newly-introduced .gitignore entries (e.g. state/.hook.log
-    # added in v0.3.4). Idempotent — no-op when already up-to-date.
+    # added in v0.3.4; state/.sync-cursor + state/.lifecycle added in
+    # v0.3.6). Idempotent — no-op when already up-to-date.
     import contextlib
 
     with contextlib.suppress(OSError):
         ensure_internal_gitignore(vibe_dir)
+
+    # v0.3.6 migration: untrack `.sync-cursor` and `.lifecycle` for
+    # projects that originally tracked them. Idempotent. Silent on
+    # already-untracked projects.
+    with contextlib.suppress(OSError):
+        ensure_state_files_untracked(Path.cwd())
 
     config = load_config(vibe_dir)
 

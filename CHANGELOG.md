@@ -6,6 +6,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.6] — 2026-05-08
+
+> Hardening + standards alignment release. v0.3.5's freshly-shipped auto-sync
+> hook exposed one real bug (the two-file infinite loop), the Linux Foundation
+> formally anchored AGENTS.md (2025-12), Google announced Gemini CLI sunset
+> on 2026-06-18, and dogfood usage matured the tool past Alpha. Six items,
+> all driven by external signals or own-eyes evidence — no speculative
+> additions. After this ships, a 90-day code freeze begins.
+
+### Fixed
+
+- **Post-commit hook no longer creates an infinite `git status` loop** — v0.3.5's hook ran `vibe sync --no-refresh`, which both advanced the cursor AND appended to `current.md`. Both files were tracked, so every commit produced two "modified" entries, and committing them re-fired the hook. v0.3.6 splits sync into two paths: `perform_cursor_update()` (hook mode — cursor only) and `perform_git_sync()` (explicit user invocation — full append). `current.md` is now reserved for human-initiated `vibe sync` and `vibe start`. The behavior was caught dogfooding within hours of v0.3.5's release.
+
+- **`.sync-cursor` and `.lifecycle` are now untracked runtime state** — both files were git-tracked but mutated on every commit, which is the actual root cause of the loop above. v0.3.6 adds them to `.vibe/.gitignore` and a one-shot `ensure_state_files_untracked()` migration runs on `vibe init --force` and `vibe start`. File contents stay on disk; only the index entry is removed. Mirrors the Unix convention (and Claude Code's session model) of "machine-driven state stays untracked."
+
+### Changed
+
+- **AGENTS.md is now the canonical source of truth (pivot)** — when AGENTS.md is co-enabled, the Cursor / Windsurf / Cline / Roo / Copilot adapters emit a one-line `See AGENTS.md` shim instead of inlining standards. Standalone fallback (when AGENTS.md is not enabled) still inlines for backwards compatibility. Reflects the Linux Foundation Agentic AI Foundation standard (announced 2025-12; 60,000+ repos adopted as of v0.3.6 ship). Single source of truth, less drift, less code per adapter.
+
+- **Antigravity adapter writes both `.agents/skills/` (new) and `GEMINI.md` (deprecated)** — Google announced Gemini CLI sunset on 2026-06-18, replaced by Antigravity CLI (`agy`), which reads `AGENTS.md` and `.agents/skills/`. v0.3.6 writes the new layout (forward-compatible) while keeping `GEMINI.md` with a deprecation banner pointing transition users at the new structure. A future release will remove `GEMINI.md` output entirely.
+
+- **Status: Alpha → Beta** — `pyproject.toml` classifier bumped from `Development Status :: 3 - Alpha` to `4 - Beta`. The "Alpha" label is no longer truthful — vibe has been production-stable across 11+ dogfood projects for 60+ days with zero user-filed bugs. Not "5 - Production/Stable" — that's a post-1.0 commitment we explicitly defer.
+
+### Added
+
+- **`vibe sync --promote "title"`** — opt-in flag that ships the latest sync block from `current.md` to an external knowledge store via a vendor-neutral subprocess shim. Default backend: `basic-memory` CLI (https://docs.basicmemory.com/). Architecture is extensible — `target` in `[promotion]` config can become `obsidian`, `logseq`, `raw-file`, etc. with one shim per target. Flag is a flag, not a new command, deliberately: 5-command surface stays at minimum-viable, and `enabled = false` (default) means zero behavior change for users who don't opt in. Editor pre-fills the latest sync block; user trims/edits to the rationale they want preserved cross-project; vibe pipes to the backend's CLI.
+
+### Removed
+
+- **Unused `mcp` optional dependency** — `pyproject.toml`'s `[project.optional-dependencies].mcp = ["mcp>=1.27.0"]` advertised functionality that does not exist (`grep -rn 'mcp\|fastmcp\|ModelContextProtocol' src/` returns zero hits). Dead-code cleanup; honest pyproject. MCP integration remains deferred until a clear cross-tool pattern emerges; no users have inquired as of v0.3.6.
+
+### Tests
+
+- 14 new tests, 263 total passing. `TestV036PostCommitHookLoopFix` proves the hook path no longer touches `current.md` and the explicit path still does. `TestV036UntrackMigration` covers the `git rm --cached` migration on both `vibe init --force` and `vibe start` (and verifies idempotency + content preservation on disk). `TestV036SyncPromote` covers disabled-by-default, title-required, unknown-target, missing-CLI, and a full mocked happy-path through `basic-memory`. Adapter tests gained the `test_shims_to_agents_md_when_co_enabled` regression net for all five compact-mode adapters.
+
+### Notes
+
+- After ship: **90-day code freeze**. No `src/` commits unless a P0 user-filed bug surfaces. Observation period to separate real demand signal from internal restlessness. RFC `docs/v0.3.6-roadmap-RFC.md` documents the strategic context and the rejected anti-patterns (no `basic_memory` adapter, no auto-pull on `vibe start`, no 10th adapter, no MCP server yet).
+
+---
+
 ## [0.3.5] — 2026-05-07
 
 > Two real-world bugs surfaced within hours of v0.3.4 going live, plus a

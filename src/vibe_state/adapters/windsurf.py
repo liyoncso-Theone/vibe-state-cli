@@ -30,8 +30,11 @@ class WindsurfAdapter(AdapterBase):
             f"# Vibe Standards — {ctx.project_name}",
             "",
         ]
-        # Windsurf cannot read AGENTS.md — use compact mode
-        lines += self._build_common_body(ctx, mode="compact")
+        # v0.3.6: AGENTS.md is now the Linux Foundation Agentic AI
+        # Foundation standard (2025-12) and Windsurf reads it natively.
+        # When co-enabled, emit a one-line shim deferring to AGENTS.md.
+        mode = "slim" if "agents_md" in ctx.enabled_adapters else "compact"
+        lines += self._build_common_body(ctx, mode=mode)
         content = "\n".join(lines)
         if not self.validate(content):
             self._warn_validation("Windsurf rule")

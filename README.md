@@ -67,6 +67,8 @@ vibe does the right thing by default. These flags help when you want something s
 
 ```bash
 vibe sync --note "..."        # capture the *why* (architecture decisions, intent)
+vibe sync --promote "title"   # ship the latest sync block to an external knowledge store
+                              # (opt-in; configure [promotion] in .vibe/config.toml)
 vibe adapt --lang zh-TW       # switch interface language any time (en / zh-TW)
 vibe init --no-hooks          # skip auto-installing the git post-commit hook
 vibe sync --close             # end the project (writes a retrospective)
@@ -75,6 +77,16 @@ vibe --version                # show version
 ```
 
 Run `vibe <command> --help` for the full option list, or see the [User Guide](docs/USER-GUIDE.md) for detailed reference.
+
+### What's new in v0.3.6
+
+Five commands, same as before — these are flag-level refinements and standards alignment, not new surface area.
+
+- **Fixed**: post-commit hook no longer creates an infinite "two files modified" loop in `git status`. `.sync-cursor` and `.lifecycle` are now treated as untracked runtime state (existing projects auto-migrate on next `vibe start`).
+- **Pivot**: AGENTS.md is now the canonical source of truth. When AGENTS.md is co-enabled, Cursor / Windsurf / Cline / Roo / Copilot adapters emit a one-line shim instead of duplicating standards. Less drift, single source of truth. Reflects the Linux Foundation Agentic AI Foundation standard (2025-12).
+- **Transition**: Antigravity adapter now writes the new `.agents/skills/` layout in addition to `GEMINI.md`. Gemini CLI shuts down 2026-06-18; the deprecated file is kept until then for transition users.
+- **New flag**: `vibe sync --promote "title"` ships the latest sync block to an external knowledge store via vendor-neutral subprocess (default backend: `basic-memory` CLI; opt-in, off by default). Extensible to Obsidian / Logseq / raw-file via config.
+- **Status**: Alpha → Beta. The tool is past initial prototyping and production-stable across 11+ dogfood projects.
 
 ## How it works under the hood
 

@@ -363,16 +363,20 @@ class TestEnsureInternalGitignore:
             assert entry in body
 
     def test_noop_when_complete(self, tmp_path: Path) -> None:
-        from vibe_state.commands._helpers import ensure_internal_gitignore
+        from vibe_state.commands._helpers import (
+            _INTERNAL_GITIGNORE_ENTRIES,
+            ensure_internal_gitignore,
+        )
 
         vibe_dir = tmp_path / ".vibe"
         vibe_dir.mkdir()
         gi = vibe_dir / ".gitignore"
+        # Build the complete file from the source-of-truth tuple so this
+        # test never falls out of sync when v0.3.x adds another entry.
         gi.write_text(
             "# vibe-state-cli internals (do not commit)\n"
-            "backups/\n"
-            "state/*.lock\n"
-            "state/.hook.log\n",
+            + "\n".join(_INTERNAL_GITIGNORE_ENTRIES)
+            + "\n",
             encoding="utf-8",
         )
         before = gi.read_text(encoding="utf-8")
@@ -652,6 +656,279 @@ class TestInitGracefulFailures:
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0, result.output
         assert "could not write .vibe/.gitignore" in result.output
+
+
+class TestV036PostCommitHookLoopFix:
+    """v0.3.6: the `--no-refresh` path (used by the post-commit hook) must
+    advance only `.sync-cursor`, never append to `current.md`. Tracking
+    files that auto-mutate on every commit creates an infinite
+    `git status` loop.
+    """
+
+    def test_no_refresh_does_not_modify_current_md(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import perform_cursor_update
+
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "f.txt").write_text("a")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, capture_output=True)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+
+        current_md = tmp_path / ".vibe" / "state" / "current.md"
+        before = current_md.read_bytes()
+
+        # Add a new commit + run cursor-only sync (what the hook calls)
+        (tmp_path / "f.txt").write_text("b")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feat: thing"],
+            cwd=tmp_path, capture_output=True,
+        )
+        result = perform_cursor_update(tmp_path / ".vibe")
+
+        assert result.commits_synced == 1
+        # current.md is byte-identical — no Sync block was appended
+        assert current_md.read_bytes() == before
+        mp.undo()
+
+    def test_explicit_sync_still_modifies_current_md(self, tmp_path: Path) -> None:
+        """Regression guard: human-invoked `vibe sync` (no flag) must keep
+        appending to current.md — that behavior is the human-readable
+        activity log everyone reads at session start."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        (tmp_path / "f.txt").write_text("a")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, capture_output=True)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+
+        (tmp_path / "f.txt").write_text("b")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "feat: real change"],
+            cwd=tmp_path, capture_output=True,
+        )
+        result = runner.invoke(app, ["sync"])
+        assert result.exit_code == 0
+
+        current = (tmp_path / ".vibe" / "state" / "current.md").read_text(encoding="utf-8")
+        assert "feat: real change" in current
+        assert "## Sync" in current
+        mp.undo()
+
+
+class TestV036SyncPromote:
+    """v0.3.6: `vibe sync --promote 'title'` ships the latest sync block
+    to an external knowledge store via vendor-neutral subprocess. Default
+    disabled — opt-in via .vibe/config.toml [promotion] section.
+    """
+
+    def _enable_promotion(self, vibe_dir: Path, target: str = "basic-memory") -> None:
+        """Flip [promotion].enabled = true in config.toml."""
+        config = load_config(vibe_dir)
+        config.promotion.enabled = True
+        config.promotion.target = target
+        save_config(vibe_dir, config)
+
+    def test_promote_disabled_by_default(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import promote_to_backend
+
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+
+        ok, msg = promote_to_backend(tmp_path / ".vibe", "anything")
+        assert ok is False
+        assert "disabled" in msg.lower()
+        mp.undo()
+
+    def test_promote_requires_title(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import promote_to_backend
+
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        self._enable_promotion(tmp_path / ".vibe")
+
+        ok, msg = promote_to_backend(tmp_path / ".vibe", "")
+        assert ok is False
+        assert "title" in msg.lower()
+        mp.undo()
+
+    def test_promote_unknown_target(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import promote_to_backend
+
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        self._enable_promotion(tmp_path / ".vibe", target="not-a-real-tool")
+
+        ok, msg = promote_to_backend(
+            tmp_path / ".vibe", "title", editor_factory=lambda _: "body"
+        )
+        assert ok is False
+        assert "not-a-real-tool" in msg
+
+    def test_promote_basic_memory_missing_cli(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If basic-memory isn't on PATH, surface a helpful error (no traceback)."""
+        from vibe_state.commands import _helpers as _h
+
+        monkeypatch.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        self._enable_promotion(tmp_path / ".vibe")
+
+        monkeypatch.setattr(_h.shutil, "which", lambda _name: None)
+        ok, msg = _h.promote_to_backend(
+            tmp_path / ".vibe", "test", editor_factory=lambda _: "body"
+        )
+        assert ok is False
+        assert "basic-memory" in msg.lower()
+        assert "path" in msg.lower()
+
+    def test_promote_basic_memory_happy_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End-to-end: simulate basic-memory available, capture invocation."""
+        from vibe_state.commands import _helpers as _h
+
+        monkeypatch.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["start"])
+        self._enable_promotion(tmp_path / ".vibe")
+
+        monkeypatch.setattr(_h.shutil, "which", lambda _name: "/fake/basic-memory")
+        captured: dict[str, object] = {}
+
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            captured["cmd"] = cmd
+            captured["input"] = kwargs.get("input")
+            class R:
+                returncode = 0
+                stdout = "ok"
+                stderr = ""
+            return R()
+
+        monkeypatch.setattr(_h.subprocess, "run", fake_run)
+        ok, msg = _h.promote_to_backend(
+            tmp_path / ".vibe", "checkpoint pattern",
+            editor_factory=lambda _: "rationale goes here",
+        )
+        assert ok is True, msg
+        assert "checkpoint pattern" in msg
+        cmd = captured["cmd"]
+        assert cmd[0] == "basic-memory"
+        assert cmd[1:3] == ["tool", "write-note"]
+        assert "--title" in cmd
+        assert cmd[cmd.index("--title") + 1] == "checkpoint pattern"
+        assert captured["input"] == "rationale goes here"
+
+
+class TestV036UntrackMigration:
+    """v0.3.6: `.sync-cursor` and `.lifecycle` move from tracked to
+    untracked. Run on `vibe init --force` and `vibe start` so existing
+    projects upgrade silently.
+    """
+
+    def _set_up_old_layout(self, tmp_path: Path) -> None:
+        """Simulate a v0.3.5 project where .sync-cursor + .lifecycle are
+        tracked in git."""
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        # Force-add the two files that older versions wrote into the index
+        for rel in (".vibe/state/.sync-cursor", ".vibe/state/.lifecycle"):
+            p = tmp_path / rel
+            if not p.exists():
+                p.write_text("seed\n")
+            subprocess.run(
+                ["git", "add", "-f", rel],
+                cwd=tmp_path, capture_output=True,
+            )
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "seed old layout"],
+            cwd=tmp_path, capture_output=True,
+        )
+
+    def test_ensure_state_files_untracked_removes_index_entries(
+        self, tmp_path: Path
+    ) -> None:
+        from vibe_state.commands._helpers import ensure_state_files_untracked
+
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        self._set_up_old_layout(tmp_path)
+        for rel in (".vibe/state/.sync-cursor", ".vibe/state/.lifecycle"):
+            ls = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", rel],
+                cwd=tmp_path, capture_output=True, text=True,
+            )
+            assert ls.returncode == 0, f"{rel} should be tracked before migration"
+
+        untracked = ensure_state_files_untracked(tmp_path)
+
+        assert set(untracked) == {".vibe/state/.sync-cursor", ".vibe/state/.lifecycle"}
+        for rel in untracked:
+            ls = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", rel],
+                cwd=tmp_path, capture_output=True, text=True,
+            )
+            assert ls.returncode != 0, f"{rel} still tracked after migration"
+            assert (tmp_path / rel).exists(), f"{rel} content lost"
+        mp.undo()
+
+    def test_ensure_state_files_untracked_is_idempotent(self, tmp_path: Path) -> None:
+        from vibe_state.commands._helpers import ensure_state_files_untracked
+
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        _git_init(tmp_path)
+        runner.invoke(app, ["init"])
+        # The two files were never tracked in this freshly-inited project
+        result1 = ensure_state_files_untracked(tmp_path)
+        result2 = ensure_state_files_untracked(tmp_path)
+        assert result1 == [] and result2 == []
+        mp.undo()
+
+    def test_start_self_heals_old_layout(self, tmp_path: Path) -> None:
+        """The whole point of putting the migration in vibe start: existing
+        users don't have to do anything. Their next session start untracks
+        the runtime-state files automatically."""
+        mp = pytest.MonkeyPatch()
+        mp.chdir(tmp_path)
+        self._set_up_old_layout(tmp_path)
+        # Confirm pre-state
+        ls = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", ".vibe/state/.sync-cursor"],
+            cwd=tmp_path, capture_output=True,
+        )
+        assert ls.returncode == 0
+
+        result = runner.invoke(app, ["start"])
+        assert result.exit_code == 0, result.output
+
+        # Confirm post-state — untracked, but still on disk
+        ls = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", ".vibe/state/.sync-cursor"],
+            cwd=tmp_path, capture_output=True,
+        )
+        assert ls.returncode != 0
+        assert (tmp_path / ".vibe/state/.sync-cursor").exists()
+        mp.undo()
 
 
 class TestCliVersion:
@@ -996,7 +1273,14 @@ class TestCliSync:
         mp.undo()
 
     def test_sync_no_refresh_skips_adapter_update(self, tmp_path: Path) -> None:
-        """sync --no-refresh should not modify adapter files (used by git hook)."""
+        """sync --no-refresh (the hook path) must NOT touch adapter files
+        AND must NOT modify current.md.
+
+        v0.3.6: the previous behavior — appending a Sync block to current.md
+        on every commit — was the root cause of the infinite-loop bug.
+        --no-refresh now does a lightweight cursor-only update; current.md
+        is reserved for user-initiated `vibe sync` (no flag) and
+        `vibe start`."""
         mp = pytest.MonkeyPatch()
         mp.chdir(tmp_path)
         _git_init(tmp_path)
@@ -1009,8 +1293,10 @@ class TestCliSync:
         runner.invoke(app, ["init"])
         runner.invoke(app, ["start"])
         agents_md = tmp_path / "AGENTS.md"
-        before_mtime = agents_md.stat().st_mtime
-        # Add a new commit
+        before_agents_mtime = agents_md.stat().st_mtime
+        current_md = tmp_path / ".vibe" / "state" / "current.md"
+        before_current_hash = current_md.read_bytes()
+        # Add a new commit (the hook would normally fire `sync --no-refresh`)
         (tmp_path / "f.txt").write_text("v2")
         subprocess.run(["git", "add", "-A"], cwd=tmp_path, capture_output=True)
         subprocess.run(
@@ -1020,10 +1306,19 @@ class TestCliSync:
         result = runner.invoke(app, ["sync", "--no-refresh"])
         assert result.exit_code == 0
         # AGENTS.md should NOT have been touched
-        assert agents_md.stat().st_mtime == before_mtime
-        # State file should still be updated
+        assert agents_md.stat().st_mtime == before_agents_mtime
+        # current.md must NOT contain the new commit — that's the v0.3.6
+        # contract that breaks the infinite-loop bug.
+        assert current_md.read_bytes() == before_current_hash
         current = read_state_file(tmp_path / ".vibe", "current.md")
-        assert "feat: change" in current
+        assert "feat: change" not in current
+        # But cursor must have advanced
+        cursor = (tmp_path / ".vibe" / "state" / ".sync-cursor").read_text()
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path,
+            capture_output=True, text=True,
+        ).stdout.strip()
+        assert cursor.strip() == head
         mp.undo()
 
     def test_sync_includes_diff_stat(self, tmp_path: Path) -> None:

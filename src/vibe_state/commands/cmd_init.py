@@ -12,6 +12,7 @@ from vibe_state.commands._helpers import (
     check_dangerous_directory,
     console,
     ensure_internal_gitignore,
+    ensure_state_files_untracked,
     get_vibe_dir,
     install_post_commit_hook,
     require_lifecycle,
@@ -198,10 +199,10 @@ def init(
     write_state(vibe_dir, LifecycleState.READY)
 
     # Ensure .vibe/.gitignore covers every runtime artifact (backups,
-    # advisory locks, hook log). Idempotent: appends missing entries
-    # without overwriting user-added lines, so existing projects upgrading
-    # to a newer vibe automatically get coverage for newly-introduced
-    # internal files (e.g. state/.hook.log added in v0.3.4).
+    # advisory locks, hook log, sync cursor, lifecycle file). Idempotent:
+    # appends missing entries without overwriting user-added lines, so
+    # existing projects upgrading to a newer vibe automatically get
+    # coverage for newly-introduced internal files.
     try:
         ensure_internal_gitignore(vibe_dir)
     except OSError as e:
@@ -209,6 +210,20 @@ def init(
             f"[yellow]Warning:[/] could not write .vibe/.gitignore ({e})."
             " You may want to add 'state/.hook.log' manually."
         )
+
+    # v0.3.6 migration: surgically untrack `.sync-cursor` and `.lifecycle`
+    # for projects that originally tracked them (these became runtime state
+    # in v0.3.6 to kill the post-commit-hook infinite-loop bug). File
+    # contents stay on disk; only the index entry is removed. Idempotent.
+    try:
+        untracked = ensure_state_files_untracked(Path.cwd())
+        if untracked:
+            console.print(
+                "[dim]Migrated to untracked runtime state:"
+                f" {', '.join(untracked)}[/]"
+            )
+    except OSError:
+        pass
 
     # Phase 5: Emit adapter files
     from vibe_state.adapters.base import build_adapter_context

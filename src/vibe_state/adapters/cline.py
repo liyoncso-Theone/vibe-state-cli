@@ -27,8 +27,11 @@ class ClineAdapter(AdapterBase):
             f"# Vibe Standards — {ctx.project_name}",
             "",
         ]
-        # Cline cannot reliably read AGENTS.md — use compact mode
-        lines += self._build_common_body(ctx, mode="compact")
+        # v0.3.6: AGENTS.md is now the Linux Foundation Agentic AI
+        # Foundation standard (2025-12). When co-enabled, Cline reads
+        # AGENTS.md via the shim — single source of truth, less drift.
+        mode = "slim" if "agents_md" in ctx.enabled_adapters else "compact"
+        lines += self._build_common_body(ctx, mode=mode)
         content = "\n".join(lines)
         if not self.validate(content):
             self._warn_validation("Cline rule")

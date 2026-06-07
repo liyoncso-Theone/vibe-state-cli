@@ -292,21 +292,55 @@ class TestStateSummaryInjection:
 
 
 class TestCompactMode:
-    def test_compact_inlines_standards(self, tmp_path: Path) -> None:
-        """Compact mode should inline standards directly, not point to file."""
+    """v0.3.6: compact-mode adapters (cursor/cline/windsurf/roo/copilot)
+    now shim to AGENTS.md when it's co-enabled. They only inline
+    standards/workflow when AGENTS.md is NOT enabled (standalone fallback).
+    """
+
+    def test_compact_inlines_standards_when_standalone(
+        self, tmp_path: Path
+    ) -> None:
+        """When AGENTS.md is NOT co-enabled, cursor must still be a
+        self-contained config — inline standards, no broken references."""
         adapter = get_adapter("cursor")
         assert adapter is not None
-        ctx = _make_ctx(tmp_path, standards="- Use snake_case\n- Write tests\n")
+        ctx = _make_ctx(
+            tmp_path,
+            standards="- Use snake_case\n- Write tests\n",
+            enabled_adapters=["cursor"],
+        )
         adapter.emit(ctx)
         mdc = tmp_path / ".cursor" / "rules" / "vibe-standards.mdc"
         content = mdc.read_text(encoding="utf-8")
         assert "snake_case" in content  # Standards inlined
         assert "READ THESE FILES" not in content  # No file-read instruction
+        assert "See AGENTS.md" not in content  # No broken shim
 
-    def test_compact_has_workflow_and_commands(self, tmp_path: Path) -> None:
+    def test_shims_to_agents_md_when_co_enabled(
+        self, tmp_path: Path
+    ) -> None:
+        """v0.3.6 pivot: when AGENTS.md is co-enabled (the common case),
+        cursor emits a one-line shim — single source of truth, less drift."""
         adapter = get_adapter("cursor")
         assert adapter is not None
-        ctx = _make_ctx(tmp_path)
+        ctx = _make_ctx(
+            tmp_path,
+            standards="- Use snake_case\n- Write tests\n",
+            enabled_adapters=["agents_md", "cursor"],
+        )
+        adapter.emit(ctx)
+        mdc = tmp_path / ".cursor" / "rules" / "vibe-standards.mdc"
+        content = mdc.read_text(encoding="utf-8")
+        assert "See AGENTS.md" in content
+        # Standards must NOT be duplicated — that's the whole point
+        assert "snake_case" not in content
+
+    def test_compact_has_workflow_and_commands_when_standalone(
+        self, tmp_path: Path
+    ) -> None:
+        adapter = get_adapter("cursor")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path, enabled_adapters=["cursor"])
         adapter.emit(ctx)
         mdc = tmp_path / ".cursor" / "rules" / "vibe-standards.mdc"
         content = mdc.read_text(encoding="utf-8")
@@ -315,17 +349,52 @@ class TestCompactMode:
         assert "Vibe Commands" in content
         assert "vibe sync" in content
 
-    def test_compact_limits_standards_to_10(self, tmp_path: Path) -> None:
+    def test_compact_limits_standards_to_10_when_standalone(
+        self, tmp_path: Path
+    ) -> None:
         """Compact mode should only inline first 10 standard lines."""
         many_rules = "\n".join(f"- Rule {i}" for i in range(20))
         adapter = get_adapter("cursor")
         assert adapter is not None
-        ctx = _make_ctx(tmp_path, standards=many_rules)
+        ctx = _make_ctx(
+            tmp_path,
+            standards=many_rules,
+            enabled_adapters=["cursor"],
+        )
         adapter.emit(ctx)
         mdc = tmp_path / ".cursor" / "rules" / "vibe-standards.mdc"
         content = mdc.read_text(encoding="utf-8")
         assert "Rule 9" in content
         assert "Rule 10" not in content  # 11th rule (0-indexed)
+
+    def test_all_compact_adapters_shim_when_agents_md_co_enabled(
+        self, tmp_path: Path
+    ) -> None:
+        """v0.3.6 contract: all five compact-mode adapters honor the shim
+        pivot when AGENTS.md is co-enabled. Regression net for the whole
+        family.
+        """
+        adapters_paths = [
+            ("cursor", tmp_path / ".cursor" / "rules" / "vibe-standards.mdc"),
+            ("cline", tmp_path / ".clinerules" / "01-vibe-standards.md"),
+            ("windsurf", tmp_path / ".windsurf" / "rules" / "vibe-standards.md"),
+            ("roo", tmp_path / ".roo" / "rules" / "01-vibe-standards.md"),
+            ("copilot", tmp_path / ".github" / "copilot-instructions.md"),
+        ]
+        for name, path in adapters_paths:
+            adapter = get_adapter(name)
+            assert adapter is not None
+            ctx = _make_ctx(
+                tmp_path,
+                standards="- Use snake_case\n",
+                enabled_adapters=["agents_md", name],
+            )
+            adapter.emit(ctx)
+            content = path.read_text(encoding="utf-8")
+            assert "See AGENTS.md" in content, f"{name} did not shim"
+            assert "snake_case" not in content, (
+                f"{name} duplicated standards instead of shimming"
+            )
 
 
 # ── Adapters always generate fresh (legacy archived by init) ──
@@ -578,13 +647,35 @@ class TestRooAdapter:
 
 
 class TestAntigravityAdapter:
-    def test_emit_creates_gemini_md(self, tmp_path: Path) -> None:
+    def test_emit_creates_gemini_md_and_agents_skills(
+        self, tmp_path: Path
+    ) -> None:
+        """v0.3.6 transition: adapter writes BOTH the legacy GEMINI.md
+        (deprecated, removed after 2026-06-18) AND the new Antigravity CLI
+        layout (.agents/skills/*/SKILL.md)."""
         adapter = get_adapter("antigravity")
         assert adapter is not None
         ctx = _make_ctx(tmp_path)
         files = adapter.emit(ctx)
-        assert len(files) == 1
-        assert files[0].name == "GEMINI.md"
+        names = {f.name for f in files}
+        assert "GEMINI.md" in names
+        assert "SKILL.md" in names
+        # 5 skills + 1 GEMINI.md
+        assert len(files) == 6
+        for skill_name in (
+            "vibe-init", "vibe-start", "vibe-sync", "vibe-status", "vibe-adapt"
+        ):
+            assert (tmp_path / ".agents" / "skills" / skill_name / "SKILL.md").exists()
+
+    def test_gemini_md_carries_deprecation_banner(self, tmp_path: Path) -> None:
+        adapter = get_adapter("antigravity")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        adapter.emit(ctx)
+        content = (tmp_path / "GEMINI.md").read_text(encoding="utf-8")
+        assert "deprecated" in content.lower()
+        assert "2026-06-18" in content
+        assert "Antigravity CLI" in content
 
     def test_imports_agents_md_when_both_enabled(self, tmp_path: Path) -> None:
         adapter = get_adapter("antigravity")
@@ -620,12 +711,28 @@ class TestAntigravityAdapter:
         (tmp_path / "GEMINI.md").write_text("test", encoding="utf-8")
         assert adapter.detect(tmp_path)
 
-    def test_clean(self, tmp_path: Path) -> None:
+    def test_detect_via_agents_dir(self, tmp_path: Path) -> None:
+        """v0.3.6: adapter should also detect projects already using the
+        new .agents/ layout, not just legacy GEMINI.md."""
+        adapter = get_adapter("antigravity")
+        assert adapter is not None
+        (tmp_path / ".agents").mkdir()
+        assert adapter.detect(tmp_path)
+
+    def test_clean_covers_both_layouts(self, tmp_path: Path) -> None:
         a = get_adapter("antigravity")
         assert a is not None
         ctx = _slim_ctx(tmp_path)
         a.emit(ctx)
-        assert a.clean(tmp_path) == [tmp_path / "GEMINI.md"]
+        cleaned = a.clean(tmp_path)
+        assert tmp_path / "GEMINI.md" in cleaned
+        for skill_name in (
+            "vibe-init", "vibe-start", "vibe-sync", "vibe-status", "vibe-adapt"
+        ):
+            assert (
+                tmp_path / ".agents" / "skills" / skill_name / "SKILL.md"
+                in cleaned
+            )
 
 
 # ── Validate-fail warn paths (patched validate) ──
