@@ -76,6 +76,40 @@ class PromotionSection(BaseModel):
     folder: str = "vibe-promotions"
 
 
+class MemorySection(BaseModel):
+    """v0.3.7: vendor-neutral configuration for the AGENTS.md persistent
+    knowledge protocol.
+
+    When `enabled`, the agents_md adapter injects a `## Persistent
+    Knowledge — QUERY BEFORE RECALL` section into AGENTS.md that
+    instructs every agent (Claude, Codex, Gemini, future tools) to
+    query the configured knowledge store BEFORE answering recall
+    questions ("what did we decide", "where did we leave off").
+
+    Architecture mirrors [promotion]: `target` is a string; today's
+    recognized value is `basic-memory` (MCP-accessible markdown
+    knowledge graph). Extensible to other backends by adding template
+    branches for the new target value — the command surface stays
+    unchanged.
+
+    Default `enabled = True`: this is the assumed knowledge layer for
+    vibe-managed multi-agent setups. Users who don't use a persistent
+    memory layer can flip to False; the section is then skipped
+    entirely and AGENTS.md regenerates without it.
+
+    Default `projects = []`: the empty list tells the template to write
+    a generic instruction ("query whichever projects you find") rather
+    than naming specific projects. Users with a known project layout
+    (e.g. `["personal", "methodology"]`) can list them in their own
+    config.toml — but the *default* never leaks one user's personal
+    project names into other users' generated AGENTS.md files.
+    """
+
+    enabled: bool = True
+    target: str = "basic-memory"
+    projects: list[str] = Field(default_factory=list)
+
+
 class VibeConfig(BaseModel):
     vibe: VibeSection = Field(default_factory=VibeSection)
     state: StateSection = Field(default_factory=StateSection)
@@ -83,6 +117,7 @@ class VibeConfig(BaseModel):
     git: GitSection = Field(default_factory=GitSection)
     experiments: ExperimentsSection = Field(default_factory=ExperimentsSection)
     promotion: PromotionSection = Field(default_factory=PromotionSection)
+    memory: MemorySection = Field(default_factory=MemorySection)
 
 
 def load_config(vibe_dir: Path) -> VibeConfig:

@@ -202,6 +202,9 @@ class AdapterBase(ABC):
             "- `.vibe/state/tasks.md` — active task checklist",
             "- `.vibe/state/standards.md` — coding conventions and project rules",
             "",
+        ]
+        lines += self._build_memory_section(ctx)
+        lines += [
             "## Workflow",
             "",
             "**Checkpoint**: After each task, mark `[x]` in `state/tasks.md`"
@@ -246,6 +249,113 @@ class AdapterBase(ABC):
             "- `vibe sync` — sync git activity to state",
             "- `vibe status` — show lifecycle and progress",
             "- `vibe adapt` — add/remove adapter config files",
+            "",
+        ]
+        return lines
+
+    def _build_memory_section(self, ctx: AdapterContext) -> list[str]:
+        """v0.3.7: BM-aware persistent knowledge section for full-mode
+        AGENTS.md.
+
+        Driven by `[memory]` config in .vibe/config.toml:
+        - enabled=False → empty list (section completely skipped)
+        - enabled=True + projects=[]  → generic "query whichever projects
+          you find" instruction (the SAFE default that never leaks
+          owner-specific project names)
+        - enabled=True + projects=[…] → explicit project list rendered
+          into the template
+
+        Mechanism is vendor-neutral via `target` string. Today's known
+        value is `basic-memory`; future targets (obsidian, logseq, ...)
+        get their own branch below.
+        """
+        try:
+            from vibe_state.config import load_config
+
+            config = load_config(ctx.vibe_dir)
+            mem = config.memory
+        except Exception:
+            # Config not readable (fresh init mid-render etc.) — skip
+            # the section rather than fail the whole adapter emit.
+            return []
+
+        if not mem.enabled:
+            return []
+
+        if mem.target == "basic-memory":
+            return self._build_basic_memory_section(mem.projects)
+
+        # Unknown target — render a minimal vendor-agnostic stub so the
+        # user is told something is configured but the template doesn't
+        # claim to know how to query it.
+        return [
+            "## Persistent Knowledge — QUERY BEFORE RECALL",
+            "",
+            f"A persistent knowledge layer (`target = \"{mem.target}\"`) is"
+            " configured for this project. Before answering recall questions",
+            "(\"what did we decide\", \"where did we leave off\"), query it"
+            " using whatever interface your agent supports.",
+            "",
+            "If the layer is unreachable (offline / not configured on this"
+            " machine), proceed without it and note the gap.",
+            "",
+        ]
+
+    @staticmethod
+    def _build_basic_memory_section(projects: list[str]) -> list[str]:
+        """Render the Basic Memory variant of the persistent-knowledge
+        section. Separated from `_build_memory_section` so future targets
+        get their own pure renderer without entangling with the
+        config-loading code path."""
+        lines = [
+            "## Persistent Knowledge — QUERY BEFORE RECALL",
+            "",
+            "This project's persistent cross-machine knowledge lives in"
+            " **Basic Memory** (markdown-on-disk knowledge graph,"
+            " MCP-accessible from any agent).",
+            "",
+            "Before answering recall questions"
+            " (\"what did we decide\", \"where did we leave off\","
+            " \"what's our principle on X\"), query the knowledge layer"
+            " first:",
+            "",
+            "- `mcp__basic-memory__search_notes(query=\"…\")` — text + semantic search",
+            "- `mcp__basic-memory__search_notes(metadata_filters={\"type\":"
+            " \"decision\"})` — structured query by type",
+            "- `mcp__basic-memory__build_context(url=\"memory://<topic>\","
+            " depth=2)` — graph traversal from a seed note",
+            "",
+        ]
+        if projects:
+            lines.append("Projects to read (in order):")
+            for p in projects:
+                lines.append(f"- `{p}`")
+        else:
+            # Generic default — never leaks owner-specific project names.
+            # Agent uses whatever projects it can discover.
+            lines += [
+                "Projects: query whichever Basic Memory projects this"
+                " agent has access to (use `mcp__basic-memory__list_memory_projects`"
+                " to enumerate). Configure preferred projects in"
+                " `.vibe/config.toml` under `[memory].projects = [...]`.",
+            ]
+        lines += [
+            "",
+            "**Fallback**: If Basic Memory is offline, the MCP server is"
+            " not registered, or a query fails/times out, fall back to"
+            " `.vibe/state/` files (current.md, tasks.md, standards.md)"
+            " as your baseline — they are the on-disk ground truth this"
+            " repo always carries. Print a one-line warning to the human"
+            " (e.g. `⚠ Basic Memory unavailable — using .vibe/state only`),"
+            " do NOT retry MCP calls, do NOT block on the recall.",
+            "",
+            "**Performance**: First Basic Memory call may be slow if the"
+            " daemon is cold-starting (≥30s on Windows). Use short"
+            " per-query timeouts (~5s); treat slow queries as unavailable"
+            " rather than waiting.",
+            "",
+            "Capture material decisions as notes with `type: decision`"
+            " to keep the layer fresh.",
             "",
         ]
         return lines

@@ -2,7 +2,29 @@
 
 > 完成後標記 `[x]`，嚴禁刪除。超過 30 天未動標記 `[~]`。
 
-## 待辦（freeze 期間 hold；v0.3.7+ 候選）
+## 待辦（freeze 期間 hold；v0.3.8+ 候選）
+
+> v0.3.7 ship 後 freeze 從 2026-06-10 重新起算 → 2026-09-08 解除
+
+### v0.3.7 adversarial review P2 follow-ups
+
+- [ ] **`_build_basic_memory_section` template wording 太絕對**
+  - 現況：「MCP-accessible from any agent」過度承諾。Cursor / Cline / Codex 使用者透過 v0.3.6 shim 讀 AGENTS.md 時不一定有 BM MCP 連著。
+  - 修法：改成「MCP-accessible from agents with the `basic-memory` MCP server registered」。
+  - 規模：~2 行 prose 變動 + 1 個 assertion 補強。
+  - 為何延後：fallback prose 已涵蓋失敗模式，這條是 cosmetic precision。
+  - 來源：v0.3.7 adversarial review reviewer 3 + synthesizer P2
+  - 建單日：2026-06-10
+
+- [ ] **`_build_memory_section` config 載入 silent except**
+  - 現況：`except Exception: return []` 默默吞掉所有 config 載入錯誤，operator 看不到「BM 預設啟用但 config 壞了」vs「BM 真的關掉」的差別。
+  - 修法：加 `logger.debug(f"memory section skipped: {e}")` 進 except 內，行為不變。
+  - 規模：1 行。
+  - 為何延後：debug-only 改善，無功能差異。
+  - 來源：v0.3.7 adversarial review reviewer 1 + synthesizer P2
+  - 建單日：2026-06-10
+
+### 從 v0.3.6 帶過來的待辦
 
 - [ ] **install_post_commit_hook 偵測舊 marker 內容並自動替換**
   - 背景：v0.3.5 改了 hook script（同步 → 背景 `(... &)`），但 `install_post_commit_hook` 看到既有 marker 就 return "already"，舊用戶升級拿不到新 hook。v0.3.6 沒處理。

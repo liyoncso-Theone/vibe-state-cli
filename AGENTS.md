@@ -4,7 +4,8 @@
 
 ## Last Session
 
-- Progress: [2026-05-07 14:53] Merge pull request #6 from liyoncso-Theone/release/v0.3.4; docs: split novice/advanced layers, EN+zh-TW, document v0.3.4 flags; feat: vibe adapt --lang for lightweight language switching
+- Progress: [2026-06-10 10:21] docs(backlog): record v0.3.6 design side-effects for v0.3.7+ consideration; Merge pull request #9 from liyoncso-Theone/release/v0.3.6; Merge pull request #8 from liyoncso-Theone/dependabot/github_actions/actions/checkout-6.0.3
+- Pending: 2 tasks — **install_post_commit_hook 偵測舊 marker 內容並自動替換**, **`vibe sync` 跳過 hook 已掃過的 commit → current.md activity log 出現空缺**
 
 ## Session Start — READ THESE FILES
 
@@ -13,6 +14,22 @@ At the beginning of every session, read these files for project context:
 - `.vibe/state/current.md` — latest progress and sync history
 - `.vibe/state/tasks.md` — active task checklist
 - `.vibe/state/standards.md` — coding conventions and project rules
+
+## Persistent Knowledge — QUERY BEFORE RECALL
+
+This project's persistent cross-machine knowledge lives in **Basic Memory** (markdown-on-disk knowledge graph, MCP-accessible from any agent).
+
+Before answering recall questions ("what did we decide", "where did we leave off", "what's our principle on X"), query the knowledge layer first:
+
+- `mcp__basic-memory__search_notes(query="…")` — text + semantic search
+- `mcp__basic-memory__search_notes(metadata_filters={"type": "decision"})` — structured query by type
+- `mcp__basic-memory__build_context(url="memory://<topic>", depth=2)` — graph traversal from a seed note
+
+Projects: query whichever Basic Memory projects this agent has access to (use `mcp__basic-memory__list_memory_projects` to enumerate). Configure preferred projects in `.vibe/config.toml` under `[memory].projects = [...]`.
+
+**Fallback**: If Basic Memory is offline, the MCP server is not registered, or the query fails, proceed without it and note the gap to the human — do not block on the recall.
+
+Capture material decisions as notes with `type: decision` to keep the layer fresh.
 
 ## Workflow
 

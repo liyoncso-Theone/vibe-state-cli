@@ -119,3 +119,46 @@ CHANGELOG.md                         |  16 +++-
  tests/test_cli.py                    | 142 +++++++++++++++++++++++++++++++++++
  5 files changed, 220 insertions(+), 11 deletions(-)
 ```
+
+## Sync [2026-06-10 10:21]
+Commits: 7 since last sync
+```
+657d46d docs(backlog): record v0.3.6 design side-effects for v0.3.7+ consideration
+c3c9009 Merge pull request #9 from liyoncso-Theone/release/v0.3.6
+b882ecc Merge pull request #8 from liyoncso-Theone/dependabot/github_actions/actions/checkout-6.0.3
+ce1f990 feat: v0.3.6 — kill commit loop, AGENTS.md pivot, --promote flag, Beta
+d1005a3 build(deps): bump actions/checkout from 6.0.2 to 6.0.3
+f5d2f2f chore: refresh .vibe/ state + record v0.3.6 hook-upgrade-detection todo
+8b6da10 Merge pull request #7 from liyoncso-Theone/release/v0.3.5
+```
+
+Files changed:
+```
+.github/workflows/ci.yml               |   2 +-
+ .github/workflows/codeql.yml           |   2 +-
+ .github/workflows/publish.yml          |   2 +-
+ .vibe/state/.sync-cursor               |   2 +-
+ .vibe/state/current.md                 |  51 +++
+ .vibe/state/tasks.md                   |  19 ++
+ CHANGELOG.md                           |  41 +++
+ README.md                              |  12 +
+ docs/v0.3.6-roadmap-RFC.md             | 330 ++++++++++++++++++++
+ docs/zh-TW/README.md                   |  12 +
+ pyproject.toml                         |   7 +-
+ src/vibe_state/__init__.py             |   2 +-
+ src/vibe_state/adapters/antigravity.py | 111 +++++--
+ src/vibe_state/adapters/cline.py       |   7 +-
+ src/vibe_state/adapters/copilot.py     |  12 +-
+ src/vibe_state/adapters/cursor.py      |   8 +-
+ src/vibe_state/adapters/roo.py         |   6 +-
+ src/vibe_state/adapters/windsurf.py    |   7 +-
+ src/vibe_state/commands/_helpers.py    | 267 +++++++++++++++-
+ src/vibe_state/commands/cmd_init.py    |  23 +-
+ src/vibe_state/commands/cmd_start.py   |  10 +-
+ src/vibe_state/commands/cmd_sync.py    |  44 ++-
+ src/vibe_state/config.py               |  21 ++
+ tests/test_adapters.py                 | 131 +++++++-
+ tests/test_cli.py                      | 315 ++++++++++++++++++-
+ uv.lock                                | 545 +--------------------------------
+ 26 files changed, 1372 insertions(+), 617 deletions(-)
+```

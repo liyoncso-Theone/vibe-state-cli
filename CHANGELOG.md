@@ -6,6 +6,55 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.7] — 2026-06-10
+
+> Strategic break of the 90-day v0.3.6 post-ship freeze. The maintainer
+> needed multi-agent Basic Memory integration to work across laptop and
+> server NOW; deferring 87 more days didn't serve the dogfood loop.
+> Freeze clock resets from this ship date.
+>
+> v0.3.7 grew out of a [[cross-team-dispatch-via-rfc]] cycle: a separate
+> Claude session (laptop side) wrote `docs/v0.3.6-rfc-agents-md-bm-aware.md`
+> after a SessionStart-hook post-mortem surfaced an architectural insight
+> — vibe-state-cli's AGENTS.md template is already the cross-agent
+> equivalent of a SessionStart hook (pure markdown, every agent that
+> reads AGENTS.md follows). The RFC proposed making the template
+> persistent-knowledge-aware. This release adopts that RFC with
+> adjustments documented in `docs/v0.3.6-rfc-agents-md-bm-aware-RESPONSE.md`.
+
+### Added
+
+- **`vibe sync` regenerates AGENTS.md with a `## Persistent Knowledge — QUERY BEFORE RECALL` section** — placed between `## Session Start` and `## Workflow`. Tells every agent that reads AGENTS.md (Claude, Codex, Gemini/Antigravity, Cursor via v0.3.6 shim, ...) to query the configured knowledge layer before answering recall questions ("what did we decide", "where did we leave off"). The mechanism is vendor-neutral; the default content targets Basic Memory.
+- **New `[memory]` config section in `.vibe/config.toml`** — symmetric to v0.3.6's `[promotion]`:
+  - `enabled` (default `true`) — flip to `false` to skip the section entirely
+  - `target` (default `"basic-memory"`) — string; `"obsidian"`, `"logseq"`, etc. fall back to a vendor-agnostic stub instead of leaking BM specifics
+  - `projects` (default `[]`) — empty list renders a generic "query whichever projects you find" instruction; non-empty list renders explicit project bullets
+- **Cold-start performance caveat in the template** — explicitly tells agents that the first Basic Memory query may take 30+ seconds on Windows (the exact symptom that motivated the RFC), to cap per-query timeouts at ~5 seconds, and to treat slow queries as unavailable rather than waiting.
+- **Concrete fallback baseline** — when Basic Memory is offline / MCP not registered / query times out, the template now names `.vibe/state/*.md` as the explicit baseline (not "proceed without it"), specifies a one-line warning shape (`⚠ Basic Memory unavailable — using .vibe/state only`), and prohibits retry loops + blocking.
+
+### Changed
+
+- **Default-on for `[memory]` while `[promotion]` stays default-off — explicit design choice, documented here**. The asymmetry is intentional: `[promotion]` is **outbound** (vibe writes to an external store on user-initiated action — sensible to require opt-in), while `[memory]` is **inbound read guidance** (the template tells agents to pull from a store on session start — sensible to assume default for vibe-managed multi-agent setups, where a knowledge layer is the whole point of using the tool). Users without a persistent memory layer flip `[memory].enabled = false`; the section disappears, no agent ever sees the BM tool names. This asymmetry was flagged by adversarial review (4 reviewers, 2 voted BLOCK on default-on), accepted as conscious owner choice, and preserved with the safety nets above.
+
+### Strategic context
+
+- **vibe-state-cli philosophy**: AGENTS.md is the cross-agent baseline; tool-specific configs are opt-in. v0.3.7 applies that philosophy to the persistent-knowledge layer — every workspace becomes BM-aware for every agent with one template change. Higher leverage than any Claude-specific SessionStart hook fix.
+- **90-day freeze**: v0.3.6 shipped 2026-06-07 with a stated 90-day post-ship freeze. v0.3.7 breaks that freeze deliberately for urgent multi-agent integration. Freeze clock resets from v0.3.7's ship date (2026-06-10 → 2026-09-08).
+
+### Tests
+
+- 10 new tests, **283 total passing** (was 273 in v0.3.6, +10 new). `TestMemorySectionInjection` covers: default-config rendering, explicit projects rendering, OSS safety net (default never leaks owner project names), `enabled=false` complete skip, unknown-target vendor-agnostic stub, offline fallback prose (baseline named, retry/block prohibited, cold-start performance warned), freshness marker preservation, idempotent regeneration, mode restriction (full only — slim/compact skip), section position between `Session Start` and `Workflow`.
+
+### Adversarial review note
+
+- 4 reviewers + 1 synth ran before commit. Verdict: **SHIP-WITH-FOLLOWUP** (confidence 0.82). Two reviewers voted BLOCK; synth refuted both with grounded reasoning (the `_write_file` "user-content destruction" claim conflated AGENTS.md with state files — AGENTS.md is fully managed by design since v0.3.0; the default-on objection was the explicit owner choice already accepted upstream). Two P1 follow-ups (fallback prose, asymmetry documentation) were folded into this commit; two P2 follow-ups (over-broad "MCP-accessible from any agent" wording, silent config-load swallow) are recorded in `.vibe/state/tasks.md` for v0.3.8 consideration.
+
+### Backlog notes
+
+- `.vibe/state/tasks.md` carries the v0.3.7 P2 follow-ups + v0.3.6's two existing backlog items (`install_post_commit_hook` marker auto-replace, `vibe sync` activity-log skip after hook cursor advance). All deferred under the new 90-day freeze starting 2026-06-10.
+
+---
+
 ## [0.3.6] — 2026-05-08
 
 > Hardening + standards alignment release. v0.3.5's freshly-shipped auto-sync
