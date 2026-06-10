@@ -1730,27 +1730,31 @@ class TestV038StatusDiagnose:
     def test_diagnose_project_warns_when_gitignore_missing_entries(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """On dev machines vibe is pipx-installed so shutil.which finds it,
-        but on CI Linux runners vibe lives only in the uv venv (not on
-        system PATH), which would produce an Environment ✗ error and
-        exit 1 — masking what we actually want to test. Mock shutil.which
-        to make 'vibe' appear available so the gitignore warning is the
-        only non-ok result."""
+        """Make this test independent of the host's vibe + basic-memory
+        installations (CI Linux has neither on system PATH). Mock vibe
+        binary, and disable [memory] so the memory layer doesn't error
+        out — the assertion is about gitignore warning, not env."""
         monkeypatch.chdir(tmp_path)
         self._init_minimal_project(tmp_path)
+
+        # Disable [memory] so basic-memory CLI absence doesn't error
+        config = load_config(tmp_path / ".vibe")
+        config.memory.enabled = False
+        save_config(tmp_path / ".vibe", config)
+
+        # Corrupt .gitignore so v0.3.6+ entries are missing
         gi = tmp_path / ".vibe" / ".gitignore"
         gi.write_text("backups/\n", encoding="utf-8")
 
+        # Fake vibe on PATH (CI doesn't have it system-wide)
         import shutil as _sh
         real_which = _sh.which
         def fake_which(name: str) -> str | None:
             if name == "vibe":
-                return "/usr/bin/vibe"  # arbitrary path; not invoked
+                return "/usr/bin/vibe"
             return real_which(name)
         monkeypatch.setattr("shutil.which", fake_which)
 
-        # Mock subprocess.run for the fake vibe binary so we don't actually
-        # try to exec it; everything else passes through.
         import subprocess as _sp
         real_run = _sp.run
         def fake_run(cmd: list[str], **kwargs: object) -> object:
