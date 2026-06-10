@@ -2,3 +2,5 @@
 backups/
 state/*.lock
 state/.hook.log
+state/.sync-cursor
+state/.lifecycle
