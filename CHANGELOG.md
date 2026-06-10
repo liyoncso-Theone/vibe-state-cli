@@ -6,6 +6,68 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.8] — 2026-06-10
+
+> Third consecutive break of the 90-day post-v0.3.6 freeze. Each break
+> was strategic, not accidental: v0.3.6 added **outbound** (`vibe sync
+> --promote`, state → external store), v0.3.7 added **inbound**
+> (`[memory]`, external store → AGENTS.md template), v0.3.8 adds
+> **observability** (`vibe status --diagnose`, cross-machine health
+> probe). The three together complete vibe-state-cli's second-brain
+> architecture; after this ship the freeze actually means something
+> because there's no remaining structural gap to fill.
+>
+> The trigger came from a real-world friction: the maintainer's
+> `tailscale ssh liyon-srv 'vibe sync'` failed because `vibe` wasn't on
+> the non-interactive shell PATH (Linux `~/.local/bin` SSH non-login
+> gotcha — same root cause as the Windows codex-cli PATH friction from
+> earlier). A symlink fixed the immediate case, but the deeper problem
+> ("environment health is invisible across machines") deserved a
+> first-class command surface. The flag-not-command shape (`vibe status
+> --diagnose`) keeps the 5-command minimum-viable surface, consistent
+> with v0.3.6 `--promote` precedent.
+
+### Added
+
+- **`vibe status --diagnose`** — brew-doctor-style deep environment check on top of the existing `vibe status` dashboard. Renders 4 check groups with ✓/⚠/✗ markers + actionable fix hints + a tail summary. Exit 1 on any error; warnings stay exit 0 (brew-doctor convention).
+- **Environment group** — vibe binary location + version (via `vibe --version` subprocess), python version (informational), pipx on PATH.
+- **Project group** — `.vibe/state/` structure, config.toml readability, `.vibe/.gitignore` entries (compared against `_INTERNAL_GITIGNORE_ENTRIES`), post-commit hook installation status (with `vibe-state-cli:auto-sync` marker check; resolves gitlinks for submodules/worktrees).
+- **Adapters group** — each enabled adapter's freshness via the existing `_check_adapter_freshness()` helper. Plus a v0.3.7-specific assertion that AGENTS.md contains `## Persistent Knowledge — QUERY BEFORE RECALL` (catches workspaces still on pre-v0.3.7 template that haven't run `vibe sync` since upgrade).
+- **Memory layer group** — `[memory].enabled` state, `basic-memory` CLI on PATH (the reverse of the SSH PATH friction that triggered this release), and a 5-second runtime probe (`basic-memory --version` with timeout) that surfaces cold-start delays as warnings rather than silent hangs.
+- **5-second per-check subprocess timeout** (`_DIAGNOSE_TIMEOUT`). The original RFC trigger was BM cold-start ≥30s on Windows; 5s captures warm-cache health while keeping the diagnose pipeline fast. Cold-start scenarios surface as `⚠ timed out` with explicit retry guidance, not hangs.
+
+### Changed
+
+- `vibe status` (no flag) behavior unchanged. `--diagnose` is purely additive.
+
+### Fixed (folded into this commit per adversarial review)
+
+- **AGENTS.md read errors no longer silently disappear**. Adversarial review (2 of 4 reviewers independently) flagged a `try/except OSError: pass` on the AGENTS.md content read at `cmd_status.py:386-387`. The silent-pass would have produced different check counts across machines (one machine readable, another not), violating the cross-machine determinism contract diagnose is supposed to enforce. Replaced with an explicit warning result.
+
+### Strategic context
+
+- This is the **third consecutive break** of the 90-day post-v0.3.6 freeze. The maintainer explicitly accepted the break each time, with each break filling a structural gap in the second-brain architecture (outbound/inbound/observability). Pre-v0.3.6 freeze was decided before that architecture became the strategic direction; the architecture's three gaps had to be filled before the freeze could be honored without leaving a half-built system.
+- After v0.3.8 ships: **freeze clock resets to 2026-06-10 → 2026-09-08, and this time it really means it**. Subsequent ships require either a P0 user-filed bug or a `[[cross-team-dispatch-via-rfc]]` cycle that survives adversarial review with strategic justification.
+- Per the BM methodology note `[[cli-design-prefer-flag-over-new-command]]` (written by laptop-side Claude during this cycle): `--diagnose` was deliberately implemented as a flag on `vibe status`, not as a new `vibe doctor` command. Inherits the brew/npm/flutter "doctor" lineage but preserves the 5-command minimum-viable surface that the v0.3.6 workflow analysis established. Same principle as v0.3.6 `vibe sync --promote`.
+
+### Tests
+
+- 12 new tests, **285 total passing** (was 273 in v0.3.7, +12 new). `TestV038StatusDiagnose` covers: status-without-diagnose regression guard, all 4 group headers render, exit codes (1 on error / 0 on only warnings), environment reports python version, project warns on missing .gitignore entries, project warns when no .git, adapters flag missing Persistent Knowledge section, memory layer disabled = ok, memory layer warns on unknown target, memory layer errors when basic-memory CLI missing, runtime probe timeout = warn (cold-start case), only-warnings = exit 0.
+
+### Adversarial review note
+
+- 4 reviewers + 1 synth ran before commit. Verdict: **SHIP-WITH-FOLLOWUP** (confidence 0.82). Two reviewers (Correctness + Cross-machine Determinism) both flagged the same P1 (silent except on AGENTS.md read). Synth bundled it into this commit per the v0.3.6 / v0.3.7 pre-commit fix pattern. Four P2 follow-ups recorded in `.vibe/state/tasks.md` for v0.3.9 consideration. Two P3 items refuted (errors-first ordering and empty-group header suppression — both rejected because the existing design choices were intentional and tests assert them).
+
+### Backlog notes
+
+- `.vibe/state/tasks.md` carries v0.3.8 P2 follow-ups (silent-except pattern in 2 remaining places, MCP probe fidelity) + v0.3.7 P2 items (over-broad MCP-accessible wording, silent config-load swallow) + v0.3.6 carryover (hook marker auto-replace, sync activity-log skip after hook cursor advance). All deferred under the new freeze starting 2026-06-10.
+
+### Cross-AI coordination note
+
+- v0.3.8 was designed via a two-session loop: laptop-side Claude ran an independent design-alignment workflow (4 reviewers + synth) after the maintainer asked "OSS 應該也要修嗎?" upon hitting the SSH PATH friction. That workflow's output was simplified per the maintainer's "diagnose就好，不要複雜化" signal (rejecting --doctor alias, --json output, -d short flag, --no-emoji, AGENTS.md version markers, governance-workspace special handling, parallel check execution, --timeout flag — none of which made it into v0.3.8). The portable principle (flag > new command) was captured in BM as methodology, not as a project-specific RFC, so future OSS work on any CLI can recall it directly.
+
+---
+
 ## [0.3.7] — 2026-06-10
 
 > Strategic break of the 90-day v0.3.6 post-ship freeze. The maintainer

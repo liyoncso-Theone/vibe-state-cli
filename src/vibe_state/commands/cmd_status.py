@@ -1,8 +1,13 @@
-"""vibe status command — health dashboard with staleness awareness."""
+"""vibe status command — health dashboard with staleness awareness.
+
+v0.3.8: also exposes `vibe status --diagnose` for deep environment checks
+(brew-doctor style — Environment / Project / Adapters / Memory layer).
+"""
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
@@ -14,6 +19,11 @@ from vibe_state.commands._helpers import (
     console,
     get_vibe_dir,
 )
+
+# v0.3.8 diagnose: per-check subprocess timeout. The original RFC trigger
+# (BM cold-start ≥30s on Windows) is the worst-case; 5s captures
+# "daemon healthy on warm cache" without hanging the diagnose pipeline.
+_DIAGNOSE_TIMEOUT = 5
 
 # ── i18n: status command messages ──
 # Local to cmd_status.py until another command needs i18n (then extract).
@@ -157,9 +167,380 @@ def _check_adapter_freshness(vibe_dir: Path, adapter_name: str) -> str:
     return "stale"
 
 
+# ── v0.3.8: diagnose ──
+
+
+@dataclass
+class _CheckResult:
+    """A single diagnose check's outcome.
+
+    `status` is one of: "ok" / "warn" / "error". Only `error` causes the
+    diagnose pipeline to exit non-zero (brew-doctor convention — warnings
+    are informational, not fatal).
+    """
+
+    status: str
+    message: str
+    fix_hint: str | None = None
+
+
+def _check_environment() -> list[_CheckResult]:
+    """vibe binary on PATH, python version, pipx healthy."""
+    import shutil
+    import subprocess
+    import sys
+
+    results: list[_CheckResult] = []
+
+    bin_path = shutil.which("vibe")
+    if bin_path:
+        try:
+            v = subprocess.run(
+                [bin_path, "--version"],
+                capture_output=True, text=True, timeout=_DIAGNOSE_TIMEOUT,
+            )
+            if v.returncode == 0:
+                version_line = (v.stdout or "").strip() or "(no version output)"
+                results.append(_CheckResult(
+                    "ok", f"vibe binary: {bin_path} ({version_line})"
+                ))
+            else:
+                results.append(_CheckResult(
+                    "warn",
+                    f"vibe binary at {bin_path}, `--version` exited {v.returncode}",
+                ))
+        except subprocess.TimeoutExpired:
+            results.append(_CheckResult(
+                "warn",
+                f"vibe binary probe timed out (>{_DIAGNOSE_TIMEOUT}s)",
+            ))
+        except OSError as e:
+            results.append(_CheckResult("warn", f"vibe binary check failed: {e}"))
+    else:
+        results.append(_CheckResult(
+            "error", "vibe binary not on PATH",
+            "Reinstall: `pipx install --force vibe-state-cli`",
+        ))
+
+    # pyproject enforces python>=3.10 at install, but report the actual
+    # version for operator context (helps debug "wrong venv" issues).
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    results.append(_CheckResult("ok", f"python: {py_ver}"))
+
+    pipx_path = shutil.which("pipx")
+    if pipx_path:
+        results.append(_CheckResult("ok", f"pipx: {pipx_path}"))
+    else:
+        results.append(_CheckResult(
+            "warn", "pipx not on PATH",
+            "Optional, but recommended for clean isolated installs",
+        ))
+
+    return results
+
+
+def _check_project(vibe_dir: Path, project_root: Path) -> list[_CheckResult]:
+    """`.vibe/` structure, config readability, gitignore entries, post-commit hook."""
+    from vibe_state.commands._helpers import (
+        _HOOK_MARKER_START,
+        _INTERNAL_GITIGNORE_ENTRIES,
+        _resolve_git_dir,
+    )
+    from vibe_state.config import ConfigParseError, load_config
+
+    results: list[_CheckResult] = []
+
+    state_dir = vibe_dir / "state"
+    if state_dir.is_dir():
+        results.append(_CheckResult("ok", ".vibe/state/ structure: present"))
+    else:
+        results.append(_CheckResult(
+            "error", ".vibe/state/ missing", "Run `vibe init`",
+        ))
+        return results
+
+    config_path = vibe_dir / "config.toml"
+    if config_path.exists():
+        try:
+            load_config(vibe_dir)
+            results.append(_CheckResult("ok", "config.toml: readable"))
+        except ConfigParseError as e:
+            results.append(_CheckResult(
+                "error", f"config.toml parse error: {e}",
+                "Fix or delete .vibe/config.toml and re-run `vibe init`",
+            ))
+            return results
+    else:
+        results.append(_CheckResult(
+            "warn", "config.toml missing — using built-in defaults",
+        ))
+
+    gi_path = vibe_dir / ".gitignore"
+    if gi_path.exists():
+        try:
+            gi_content = gi_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            gi_content = ""
+        gi_lines = {ln.strip() for ln in gi_content.splitlines()}
+        missing = [e for e in _INTERNAL_GITIGNORE_ENTRIES if e not in gi_lines]
+        if missing:
+            results.append(_CheckResult(
+                "warn", f".vibe/.gitignore missing entries: {', '.join(missing)}",
+                "Run `vibe start` or `vibe init --force` to self-heal",
+            ))
+        else:
+            results.append(_CheckResult("ok", ".vibe/.gitignore: all entries present"))
+    else:
+        results.append(_CheckResult(
+            "warn", ".vibe/.gitignore missing",
+            "Run `vibe start` to auto-create",
+        ))
+
+    git_dir = _resolve_git_dir(project_root)
+    if git_dir is None:
+        results.append(_CheckResult(
+            "warn", "post-commit hook: not installed (no .git in project)",
+        ))
+    else:
+        hook_path = git_dir / "hooks" / "post-commit"
+        if hook_path.exists():
+            try:
+                hook_content = hook_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                hook_content = ""
+            if _HOOK_MARKER_START in hook_content:
+                results.append(_CheckResult("ok", "post-commit hook: installed"))
+            else:
+                results.append(_CheckResult(
+                    "warn", "post-commit hook exists but no vibe-state-cli marker",
+                    "Run `vibe init --force` to add vibe block",
+                ))
+        else:
+            results.append(_CheckResult(
+                "warn", "post-commit hook: not installed",
+                "Run `vibe init --force` to install (skip with `--no-hooks`)",
+            ))
+
+    return results
+
+
+def _check_adapters(vibe_dir: Path) -> list[_CheckResult]:
+    """Each enabled adapter's freshness + AGENTS.md has Persistent Knowledge."""
+    from vibe_state.config import load_config
+
+    results: list[_CheckResult] = []
+
+    try:
+        config = load_config(vibe_dir)
+    except Exception:
+        results.append(_CheckResult(
+            "warn", "Skipping adapter checks (config unreadable)",
+        ))
+        return results
+
+    if not config.adapters.enabled:
+        results.append(_CheckResult(
+            "warn", "No adapters enabled in config.toml",
+        ))
+        return results
+
+    project_root = vibe_dir.parent
+    for name in config.adapters.enabled:
+        status_key = _check_adapter_freshness(vibe_dir, name)
+        if status_key == "fresh":
+            results.append(_CheckResult("ok", f"{name}: fresh"))
+        elif status_key == "stale":
+            results.append(_CheckResult(
+                "warn", f"{name}: stale (state summary out of sync)",
+                "Run `vibe sync` to regenerate adapter files",
+            ))
+        elif status_key == "missing":
+            results.append(_CheckResult(
+                "error", f"{name}: managed files missing",
+                f"Run `vibe adapt --sync` to regenerate {name} files",
+            ))
+        elif status_key == "user_owned":
+            results.append(_CheckResult(
+                "ok", f"{name}: user-owned (no managed marker — intentional)",
+            ))
+        else:
+            results.append(_CheckResult("warn", f"{name}: unknown state ({status_key})"))
+
+    # v0.3.7 Persistent Knowledge section check — agents_md only
+    if "agents_md" in config.adapters.enabled:
+        agents_md = project_root / "AGENTS.md"
+        if agents_md.exists():
+            try:
+                content = agents_md.read_text(encoding="utf-8", errors="replace")
+            except OSError as e:
+                # Silent-pass here used to hide cross-machine determinism
+                # differences (one machine readable, another not → different
+                # check counts in Summary). Surface it as a warning so the
+                # user has feedback AND the count is consistent.
+                results.append(_CheckResult(
+                    "warn", f"AGENTS.md: unreadable ({e})",
+                    "Check file permissions or restore from backup",
+                ))
+            else:
+                if "## Persistent Knowledge" in content:
+                    results.append(_CheckResult(
+                        "ok",
+                        "AGENTS.md: contains Persistent Knowledge section"
+                        " (v0.3.7+ template)",
+                    ))
+                else:
+                    results.append(_CheckResult(
+                        "warn",
+                        "AGENTS.md: missing Persistent Knowledge section"
+                        " (pre-v0.3.7 template)",
+                        "Run `vibe sync` to regenerate with latest template",
+                    ))
+
+    return results
+
+
+def _check_memory_layer(vibe_dir: Path) -> list[_CheckResult]:
+    """\\[memory].enabled + basic-memory CLI + MCP runtime probe."""
+    import shutil
+    import subprocess
+
+    from vibe_state.config import load_config
+
+    results: list[_CheckResult] = []
+
+    try:
+        config = load_config(vibe_dir)
+        mem = config.memory
+    except Exception:
+        results.append(_CheckResult(
+            "warn", "Skipping memory checks (config unreadable)",
+        ))
+        return results
+
+    if not mem.enabled:
+        results.append(_CheckResult(
+            "ok", "\\[memory].enabled = false (memory layer disabled — no checks needed)",
+        ))
+        return results
+
+    results.append(_CheckResult(
+        "ok", f"\\[memory].enabled = true (target: {mem.target!r})",
+    ))
+
+    if mem.target != "basic-memory":
+        results.append(_CheckResult(
+            "warn",
+            f"\\[memory].target = {mem.target!r} — diagnose only knows basic-memory",
+            "Manual check required for this target; future versions may add support",
+        ))
+        return results
+
+    bm = shutil.which("basic-memory")
+    if not bm:
+        results.append(_CheckResult(
+            "error", "basic-memory CLI not on PATH",
+            "Install: https://docs.basicmemory.com/ or flip \\[memory].enabled = false",
+        ))
+        return results
+
+    results.append(_CheckResult("ok", f"basic-memory CLI: {bm}"))
+
+    # Runtime probe — invoke basic-memory --version with hard timeout. This
+    # confirms the binary spawns + responds without hanging (the original
+    # SessionStart-hook failure mode the v0.3.7 RFC was filed against was
+    # exactly basic-memory taking >30s to respond on Windows cold start).
+    try:
+        r = subprocess.run(
+            [bm, "--version"],
+            capture_output=True, text=True, timeout=_DIAGNOSE_TIMEOUT,
+        )
+        if r.returncode == 0:
+            v_text = (r.stdout or "").strip().splitlines()
+            v_first = v_text[0] if v_text else "(no output)"
+            results.append(_CheckResult(
+                "ok", f"basic-memory runtime probe: {v_first}",
+            ))
+        else:
+            results.append(_CheckResult(
+                "warn",
+                f"basic-memory --version exited {r.returncode}",
+                "Daemon may be misconfigured — check basic-memory logs",
+            ))
+    except subprocess.TimeoutExpired:
+        results.append(_CheckResult(
+            "warn",
+            f"basic-memory runtime probe timed out (>{_DIAGNOSE_TIMEOUT}s)",
+            "Daemon may be cold-starting; first query is often slow on Windows."
+            " Retry in 30s; if it persists, restart basic-memory.",
+        ))
+    except OSError as e:
+        results.append(_CheckResult(
+            "error", f"basic-memory runtime probe failed: {e}",
+        ))
+
+    return results
+
+
+def _render_diagnose_group(title: str, results: list[_CheckResult]) -> None:
+    """brew-doctor style group rendering."""
+    console.print(f"\n[bold cyan]\\[{title}][/]")
+    for r in results:
+        marker = {
+            "ok": "[green]✓[/]",
+            "warn": "[yellow]⚠[/]",
+            "error": "[red]✗[/]",
+        }.get(r.status, "?")
+        console.print(f"  {marker} {r.message}")
+        if r.fix_hint:
+            console.print(f"    [dim]→ {r.fix_hint}[/]")
+
+
+def _run_diagnose(vibe_dir: Path) -> int:
+    """Run all 4 diagnose check groups + render + return exit code."""
+    project_root = vibe_dir.parent
+
+    env_results = _check_environment()
+    project_results = _check_project(vibe_dir, project_root)
+    adapter_results = _check_adapters(vibe_dir)
+    memory_results = _check_memory_layer(vibe_dir)
+
+    _render_diagnose_group("Environment", env_results)
+    _render_diagnose_group("Project", project_results)
+    _render_diagnose_group("Adapters", adapter_results)
+    _render_diagnose_group("Memory layer", memory_results)
+
+    all_results = env_results + project_results + adapter_results + memory_results
+    n_ok = sum(1 for r in all_results if r.status == "ok")
+    n_warn = sum(1 for r in all_results if r.status == "warn")
+    n_error = sum(1 for r in all_results if r.status == "error")
+
+    console.print(
+        f"\n[bold]Summary:[/] [green]{n_ok} ok[/], "
+        f"[yellow]{n_warn} warnings[/], [red]{n_error} errors[/]"
+    )
+
+    return 1 if n_error > 0 else 0
+
+
+# ── status command (extended with --diagnose in v0.3.8) ──
+
+
 @app.command()
-def status() -> None:
-    """Show project state health: lifecycle, sync staleness, adapter sync state."""
+def status(
+    diagnose: bool = typer.Option(
+        False,
+        "--diagnose",
+        help=(
+            "Run deep environment diagnostics (brew-doctor style):"
+            " Environment / Project / Adapters / Memory layer."
+            " Exit 1 if any errors; warnings still exit 0."
+        ),
+    ),
+) -> None:
+    """Show project state health: lifecycle, sync staleness, adapter sync state.
+
+    Use --diagnose for deep environment checks (PATH, MCP, adapters, etc).
+    """
     from vibe_state.config import load_config
     from vibe_state.core.git_ops import get_log_since, git_available, read_sync_cursor
     from vibe_state.core.lifecycle import read_state
@@ -170,6 +551,12 @@ def status() -> None:
     if not vibe_dir.exists():
         console.print(_t("no_vibe_dir", "en"))
         raise typer.Exit(1)
+
+    if diagnose:
+        exit_code = _run_diagnose(vibe_dir)
+        if exit_code != 0:
+            raise typer.Exit(exit_code)
+        return
 
     lifecycle = read_state(vibe_dir)
     config = load_config(vibe_dir)
