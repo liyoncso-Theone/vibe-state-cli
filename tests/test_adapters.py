@@ -16,6 +16,7 @@ from vibe_state.adapters.registry import (
     get_all_adapter_names,
     get_all_adapters,
 )
+from vibe_state.config import VibeConfig, save_config
 
 # ── Helpers ──
 
@@ -824,5 +825,216 @@ class TestSanitize:
 
     def test_preserves_hash_and_quotes(self) -> None:
         assert _sanitize('## "hello" `code`') == '## "hello" `code`'
+
+
+# ── v0.3.7: AGENTS.md BM-aware Session Start Protocol ──
+
+
+def _write_config(vibe_dir: Path, **memory_overrides: object) -> None:
+    """Write a config.toml with memory section overrides for tests."""
+    config = VibeConfig()
+    for k, v in memory_overrides.items():
+        setattr(config.memory, k, v)
+    save_config(vibe_dir, config)
+
+
+class TestMemorySectionInjection:
+    """v0.3.7: agents_md full-mode template gains a vendor-neutral
+    persistent-knowledge section. Mechanism is config-driven; default
+    is enabled with `target = "basic-memory"` and `projects = []`.
+    """
+
+    def test_default_config_injects_basic_memory_section(
+        self, tmp_path: Path
+    ) -> None:
+        """Default config (enabled=True, target=basic-memory, projects=[])
+        renders the canonical BM section."""
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        # No config file written → load_config returns defaults
+        adapter.emit(ctx)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "## Persistent Knowledge — QUERY BEFORE RECALL" in content
+        assert "Basic Memory" in content
+        assert "mcp__basic-memory__search_notes" in content
+        # Default projects=[] → generic instruction, not specific names
+        assert "query whichever Basic Memory projects" in content
+
+    def test_explicit_projects_listed_when_configured(
+        self, tmp_path: Path
+    ) -> None:
+        """When the user configures specific projects, the template
+        renders them as a list."""
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        _write_config(ctx.vibe_dir, projects=["work", "personal"])
+        adapter.emit(ctx)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "- `work`" in content
+        assert "- `personal`" in content
+        # When explicit list is given, generic fallback text drops
+        assert "query whichever Basic Memory projects" not in content
+
+    def test_default_projects_never_leaks_owner_specific_names(
+        self, tmp_path: Path
+    ) -> None:
+        """OSS safety net: the default project list must not contain
+        any names from the maintainer's personal Basic Memory setup.
+        Without this guard, a user pip-installing the package would see
+        the maintainer's `personal` / `methodology` project names in
+        their auto-generated AGENTS.md."""
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        adapter.emit(ctx)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        # Specific BM project names the maintainer happens to use must
+        # NOT appear as project bullets in the default output.
+        assert "- `personal`" not in content
+        assert "- `methodology`" not in content
+
+    def test_disabled_skips_section_entirely(self, tmp_path: Path) -> None:
+        """enabled=False means the section is completely absent —
+        AGENTS.md regenerates as if v0.3.7 never added it."""
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        _write_config(ctx.vibe_dir, enabled=False)
+        adapter.emit(ctx)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "Persistent Knowledge" not in content
+        assert "Basic Memory" not in content
+        assert "mcp__basic-memory__" not in content
+        # Workflow section still present (rest of template intact)
+        assert "## Workflow" in content
+
+    def test_unknown_target_renders_vendor_agnostic_stub(
+        self, tmp_path: Path
+    ) -> None:
+        """Future-proofing: if user sets `target = "obsidian"` (or any
+        other future target), the template emits a generic
+        vendor-agnostic stub instead of breaking or leaking BM specifics."""
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        _write_config(ctx.vibe_dir, target="obsidian")
+        adapter.emit(ctx)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "## Persistent Knowledge — QUERY BEFORE RECALL" in content
+        assert 'target = "obsidian"' in content
+        # BM-specific instructions must NOT leak when target is something else
+        assert "mcp__basic-memory__" not in content
+        assert "Basic Memory" not in content
+
+    def test_offline_fallback_instruction_present(
+        self, tmp_path: Path
+    ) -> None:
+        """The template must explicitly tell the agent what to do when
+        the knowledge store is unreachable — silent failure is the worst
+        case (agent stuck or wastes context guessing).
+
+        v0.3.7 adversarial review tightened the fallback prose to:
+        (a) name a concrete baseline (.vibe/state/ files),
+        (b) cap retry behavior (do NOT retry, do NOT block),
+        (c) specify how to surface the gap (one-line warning).
+        """
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        adapter.emit(ctx)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "**Fallback**" in content
+        # Baseline must be named explicitly (not just "without it")
+        assert ".vibe/state/" in content
+        # Retry policy must be prescriptive
+        assert "do NOT retry" in content or "do not retry" in content.lower()
+        assert "do NOT block" in content or "do not block" in content.lower()
+        # Cold-start performance caveat must surface (the original RFC
+        # was filed BECAUSE of this exact 30s timeout problem)
+        assert "Performance" in content
+        assert "cold-start" in content.lower()
+
+    def test_freshness_marker_preserved(self, tmp_path: Path) -> None:
+        """The managed marker that vibe status uses for freshness
+        detection must still be at the end of the file after the new
+        section is added."""
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        adapter.emit(ctx)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "<!-- vibe-state-cli:managed -->" in content
+        # Marker should be near the end, after the new section
+        marker_pos = content.rfind("<!-- vibe-state-cli:managed -->")
+        section_pos = content.find("## Persistent Knowledge")
+        assert marker_pos > section_pos, (
+            "marker should come AFTER the memory section, not before"
+        )
+
+    def test_idempotent_regeneration(self, tmp_path: Path) -> None:
+        """Running emit twice should produce byte-identical output —
+        no drift, no accidental duplicate sections."""
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        adapter.emit(ctx)
+        first = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        adapter.emit(ctx)
+        second = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert first == second
+        # And only one section, not two
+        assert first.count("## Persistent Knowledge") == 1
+
+    def test_section_only_in_full_mode_not_slim_or_compact(
+        self, tmp_path: Path
+    ) -> None:
+        """Memory section is the AGENTS.md baseline — it belongs in
+        full mode only. Slim mode shims to AGENTS.md (inherits
+        automatically). Compact mode is for tools without MCP, so the
+        section would be useless there."""
+        # Slim mode: claude.py rules file when AGENTS.md is co-enabled
+        claude = get_adapter("claude")
+        assert claude is not None
+        ctx_with_agents = _make_ctx(tmp_path, enabled_adapters=["agents_md", "claude"])
+        claude.emit(ctx_with_agents)
+        rules = (tmp_path / ".claude" / "rules" / "vibe-standards.md").read_text(
+            encoding="utf-8"
+        )
+        assert "## Persistent Knowledge" not in rules
+        assert "See AGENTS.md" in rules
+
+        # Compact mode: cursor when agents_md is NOT enabled
+        # Use a fresh tmp_path to avoid file collision
+        cursor_tmp = tmp_path / "cursor_only"
+        cursor_tmp.mkdir()
+        cursor_ctx = _make_ctx(
+            cursor_tmp,
+            enabled_adapters=["cursor"],
+        )
+        cursor = get_adapter("cursor")
+        assert cursor is not None
+        cursor.emit(cursor_ctx)
+        mdc = (
+            cursor_tmp / ".cursor" / "rules" / "vibe-standards.mdc"
+        ).read_text(encoding="utf-8")
+        assert "## Persistent Knowledge" not in mdc
+
+    def test_section_inserted_between_session_start_and_workflow(
+        self, tmp_path: Path
+    ) -> None:
+        """The section's position matters for human readability: it
+        should appear between 'Session Start — READ THESE FILES' and
+        '## Workflow', not after Boundaries or somewhere random."""
+        adapter = get_adapter("agents_md")
+        assert adapter is not None
+        ctx = _make_ctx(tmp_path)
+        adapter.emit(ctx)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        session_pos = content.find("## Session Start")
+        memory_pos = content.find("## Persistent Knowledge")
+        workflow_pos = content.find("## Workflow")
+        assert session_pos < memory_pos < workflow_pos
 
 
