@@ -1728,19 +1728,44 @@ class TestV038StatusDiagnose:
         mp.undo()
 
     def test_diagnose_project_warns_when_gitignore_missing_entries(
-        self, tmp_path: Path
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        mp = pytest.MonkeyPatch()
-        mp.chdir(tmp_path)
+        """On dev machines vibe is pipx-installed so shutil.which finds it,
+        but on CI Linux runners vibe lives only in the uv venv (not on
+        system PATH), which would produce an Environment ✗ error and
+        exit 1 — masking what we actually want to test. Mock shutil.which
+        to make 'vibe' appear available so the gitignore warning is the
+        only non-ok result."""
+        monkeypatch.chdir(tmp_path)
         self._init_minimal_project(tmp_path)
-        # Force-corrupt the .gitignore so a v0.3.6 entry is missing
         gi = tmp_path / ".vibe" / ".gitignore"
         gi.write_text("backups/\n", encoding="utf-8")
+
+        import shutil as _sh
+        real_which = _sh.which
+        def fake_which(name: str) -> str | None:
+            if name == "vibe":
+                return "/usr/bin/vibe"  # arbitrary path; not invoked
+            return real_which(name)
+        monkeypatch.setattr("shutil.which", fake_which)
+
+        # Mock subprocess.run for the fake vibe binary so we don't actually
+        # try to exec it; everything else passes through.
+        import subprocess as _sp
+        real_run = _sp.run
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            if cmd and cmd[0] == "/usr/bin/vibe":
+                class R:
+                    returncode = 0
+                    stdout = "vibe-state-cli 0.3.8"
+                    stderr = ""
+                return R()
+            return real_run(cmd, **kwargs)
+        monkeypatch.setattr("subprocess.run", fake_run)
+
         result = runner.invoke(app, ["status", "--diagnose"])
         assert "missing entries" in result.output
-        # Should warn, not error → exit 0 since warnings are informational
         assert result.exit_code == 0
-        mp.undo()
 
     def test_diagnose_project_no_git_warns(self, tmp_path: Path) -> None:
         """Workspaces without .git (e.g., governance) should WARN not ERROR."""
@@ -1846,26 +1871,40 @@ class TestV038StatusDiagnose:
     ) -> None:
         """Cold-start ≥30s on Windows was the RFC's motivating case. A
         timeout must surface as a WARN (informational), not ERROR — the
-        user should retry, not panic."""
+        user should retry, not panic.
+
+        Also fake 'vibe' on PATH so the Environment group passes (matters
+        on CI Linux runners where vibe is in the uv venv, not on system
+        PATH)."""
         import subprocess as _sp
 
         monkeypatch.chdir(tmp_path)
         self._init_minimal_project(tmp_path)
 
-        # Fake basic-memory on PATH
+        # Fake basic-memory AND vibe on PATH
         import shutil as _sh
         real_which = _sh.which
         def fake_which(name: str) -> str | None:
             if name == "basic-memory":
                 return "/fake/basic-memory"
+            if name == "vibe":
+                return "/fake/vibe"
             return real_which(name)
         monkeypatch.setattr("shutil.which", fake_which)
 
-        # Force subprocess.run to raise TimeoutExpired for basic-memory probe
+        # subprocess.run: basic-memory probe times out, vibe --version
+        # returns a fake successful response, everything else passes
+        # through to the real subprocess.run.
         real_run = _sp.run
         def fake_run(cmd: list[str], **kwargs: object) -> object:
             if cmd and cmd[0] == "/fake/basic-memory":
                 raise _sp.TimeoutExpired(cmd=cmd, timeout=5)
+            if cmd and cmd[0] == "/fake/vibe":
+                class R:
+                    returncode = 0
+                    stdout = "vibe-state-cli 0.3.8"
+                    stderr = ""
+                return R()
             return real_run(cmd, **kwargs)
         monkeypatch.setattr("subprocess.run", fake_run)
 
