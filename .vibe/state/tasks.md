@@ -24,6 +24,24 @@
   - 來源：v0.3.7 adversarial review reviewer 1 + synthesizer P2
   - 建單日：2026-06-10
 
+### v0.3.8 adversarial review P2 follow-ups
+
+- [ ] **silent except pattern 還有 2 處未修**
+  - 現況：v0.3.8 修了 AGENTS.md 那條（cmd_status.py:386-387 之前 silent `except OSError: pass`），但 `.vibe/.gitignore`（280-290）和 post-commit hook（307-317）有同個 pattern。
+  - 影響：較小（這兩個比 AGENTS.md 更少 cross-machine readable/unreadable 差異），但保留同個 silent degradation 風險。
+  - 修法：抽 `_safe_read_text(path) -> tuple[str | None, OSError | None]` helper，三處共用，OSError 一致變 warn。
+  - 為何延後：v0.3.8 只 fold 一個 P1 入 commit，剩兩條同 pattern 統一 refactor 比較乾淨。
+  - 來源：v0.3.8 adversarial review reviewer 1 + synthesizer P2
+  - 建單日：2026-06-10
+
+- [ ] **MCP runtime probe 不真的測 daemon**
+  - 現況：`vibe status --diagnose` 用 `basic-memory --version` 當 probe。它只測 CLI binary 能 spawn，不真的查 daemon／資料庫。
+  - 風險：daemon 死但 CLI 還在 → diagnose ✓ false positive。
+  - 修法：等確認 basic-memory CLI surface 穩定後，改用 `basic-memory project list` 或 `basic-memory status` 之類真的 touch daemon 的指令。timeout 可能要從 5s 拉到 10s 或更高。
+  - 為何延後：(a) basic-memory CLI shape 我不熟，亂猜 subcommand 會踩 false negative；(b) 等實作 v0.3.9 時併入「per-target probe shape」抽象。
+  - 來源：v0.3.8 adversarial review reviewer 2 + synthesizer P2
+  - 建單日：2026-06-10
+
 ### 從 v0.3.6 帶過來的待辦
 
 - [ ] **install_post_commit_hook 偵測舊 marker 內容並自動替換**
